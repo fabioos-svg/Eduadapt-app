@@ -2,10 +2,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AdaptedLesson, Discipline, Grade } from "../types";
 
-/**
- * Função para adaptar o conteúdo da aula usando o modelo Gemini 3 Pro.
- * O modelo Pro é utilizado aqui por se tratar de uma tarefa de raciocínio complexo (pedagogia).
- */
 export const adaptLessonContent = async (
   originalContent: string, 
   discipline: Discipline, 
@@ -14,35 +10,41 @@ export const adaptLessonContent = async (
   chapter: number,
   grade: Grade
 ): Promise<AdaptedLesson> => {
-  // Inicialização local para garantir a chave API mais recente
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = `
-    Como um especialista em educação especial e tecnologia assistiva, sua tarefa é adaptar o conteúdo abaixo para um aluno com Deficiência Intelectual (DI).
+    Você é um especialista em Educação Inclusiva (DI). Adapte a aula abaixo com FOCO VISUAL MÁXIMO e TEXTO MÍNIMO.
     
-    Contexto:
-    - Disciplina: ${discipline}
-    - Nível: ${grade}
-    - Professor: ${teacherName}
-    - Instituição: ${school}
-    - Capítulo: ${chapter}
+    REGRAS DE OURO:
+    1. PORTUGUÊS IMPECÁVEL: Revise cada palavra. Sem erros de concordância ou ortografia.
+    2. MENOS É MAIS: Use no máximo 2 ou 3 frases curtas por seção. O foco é a IMAGEM e a AÇÃO.
+    3. ALTERNÂNCIA PEDAGÓGICA OBRIGATÓRIA:
+       - Seção 1 (Explicação): O que é o conceito? (Texto simples + Imagem literal)
+       - Seção 2 (Atividade): Um desafio prático, pergunta de identificar ou exercício de ligar/marcar.
+       - Seção 3 (Explicação): Como isso se aplica no dia a dia?
+       - Seção 4 (Atividade): Um exercício final de reflexão prática ou desenho.
     
-    Diretrizes de Adaptação:
-    1. Linguagem Simples: Use frases curtas (máximo 10 palavras), voz ativa e vocabulário concreto.
-    2. Foco: Extraia APENAS o conceito principal. Elimine distrações e detalhes secundários.
-    3. Respeito: O conteúdo deve ser adequado à idade (${grade}), evitando tom infantilizado demais se for Ensino Médio.
-    4. Visual: Crie descrições de imagens literais para os prompts.
-    
-    Conteúdo Original:
+    ESTRATÉGIA POR COMPONENTE (${discipline}):
+    - Matemática: Use contagem de objetos, formas geométricas ou situações de compra.
+    - Língua Portuguesa: Use palavras-chave, letras grandes e associações diretas.
+    - Inglês: Foco em vocabulário básico (cores, animais, saudações) associado diretamente a imagens.
+    - Química: Foco em transformações visíveis (mudança de cor, estados da matéria) e segurança laboratorial.
+    - História/Geografia: Use figuras de "antes e depois", fotos de lugares ou mapas muito simplificados.
+    - Ciências: Foco em observação da natureza, corpo humano e hábitos saudáveis.
+    - Filosofia/Sociologia: Situações de convivência, emoções humanas (emojis) e regras de respeito.
+
+    CONTEÚDO PARA ADAPTAR:
     ${originalContent}
+
+    Responda em JSON seguindo estritamente o esquema. No campo 'type', use 'explanation' para teoria e 'activity' para prática.
   `;
 
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-preview', // Modelo Pro para tarefas complexas
+      model: 'gemini-3-pro-preview',
       contents: prompt,
       config: {
-        thinkingConfig: { thinkingBudget: 2000 }, // Adiciona orçamento de pensamento para melhor adaptação
+        thinkingConfig: { thinkingBudget: 2500 },
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -58,9 +60,12 @@ export const adaptLessonContent = async (
                   title: { type: Type.STRING },
                   content: { type: Type.STRING },
                   imagePrompt: { type: Type.STRING },
+                  type: { type: Type.STRING, enum: ['explanation', 'activity'] }
                 },
-                required: ["title", "content", "imagePrompt"]
-              }
+                required: ["title", "content", "imagePrompt", "type"]
+              },
+              minItems: 4,
+              maxItems: 4
             },
             coloringChallenge: {
               type: Type.OBJECT,
@@ -86,8 +91,6 @@ export const adaptLessonContent = async (
     });
 
     let text = response.text;
-    
-    // Limpeza de possíveis blocos de código Markdown que o modelo possa retornar por engano
     if (text.startsWith('```')) {
       text = text.replace(/^```json\n?/, '').replace(/\n?```$/, '');
     }
@@ -102,20 +105,17 @@ export const adaptLessonContent = async (
       grade
     };
   } catch (error) {
-    console.error("Erro ao processar adaptação pedagógica:", error);
+    console.error("Erro na adaptação:", error);
     throw error;
   }
 };
 
-/**
- * Função para gerar imagens ilustrativas usando o modelo Flash Image.
- */
 export const generateLessonImage = async (prompt: string, isColoring: boolean = false): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const finalPrompt = isColoring 
-    ? `Line art coloring page, very simple bold black outlines, white background, no shading, no gray, for students with DI: ${prompt}`
-    : `Educational cartoon 3D, very simple and clear subject, white background, friendly, bright colors: ${prompt}`;
+    ? `Desenho linear para colorir, contornos pretos grossos e nítidos, fundo branco puro, sem sombras, estilo minimalista educativo para alunos com DI: ${prompt}`
+    : `Ilustração 3D educativa, estilo Pixar/Disney, fundo branco limpo, cores vibrantes, um único objeto central claro e grande, sem poluição visual: ${prompt}`;
 
   try {
     const response = await ai.models.generateContent({
@@ -133,9 +133,9 @@ export const generateLessonImage = async (prompt: string, isColoring: boolean = 
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    throw new Error("Imagem não encontrada na resposta");
+    throw new Error("Imagem não gerada.");
   } catch (error) {
-    console.error("Erro na geração de imagem:", error);
+    console.error("Erro na imagem:", error);
     throw error;
   }
 };
