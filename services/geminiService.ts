@@ -13,30 +13,30 @@ export const adaptLessonContent = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = `
-    Você é um especialista em Educação Inclusiva (DI). Adapte a aula abaixo com FOCO VISUAL MÁXIMO e TEXTO MÍNIMO.
-    
-    REGRAS DE OURO:
-    1. PORTUGUÊS IMPECÁVEL: Revise cada palavra. Sem erros de concordância ou ortografia.
-    2. MENOS É MAIS: Use no máximo 2 ou 3 frases curtas por seção. O foco é a IMAGEM e a AÇÃO.
-    3. ALTERNÂNCIA PEDAGÓGICA OBRIGATÓRIA:
-       - Seção 1 (Explicação): O que é o conceito? (Texto simples + Imagem literal)
-       - Seção 2 (Atividade): Um desafio prático, pergunta de identificar ou exercício de ligar/marcar.
-       - Seção 3 (Explicação): Como isso se aplica no dia a dia?
-       - Seção 4 (Atividade): Um exercício final de reflexão prática ou desenho.
-    
-    ESTRATÉGIA POR COMPONENTE (${discipline}):
-    - Matemática: Use contagem de objetos, formas geométricas ou situações de compra.
-    - Língua Portuguesa: Use palavras-chave, letras grandes e associações diretas.
-    - Inglês: Foco em vocabulário básico (cores, animais, saudações) associado diretamente a imagens.
-    - Química: Foco em transformações visíveis (mudança de cor, estados da matéria) e segurança laboratorial.
-    - História/Geografia: Use figuras de "antes e depois", fotos de lugares ou mapas muito simplificados.
-    - Ciências: Foco em observação da natureza, corpo humano e hábitos saudáveis.
-    - Filosofia/Sociologia: Situações de convivência, emoções humanas (emojis) e regras de respeito.
+    Como especialista sênior em Educação Especial (DI), sua tarefa é adaptar o conteúdo abaixo.
+    FOCO: Visual máximo, texto mínimo (2-3 frases curtas por bloco) e correção gramatical absoluta.
 
-    CONTEÚDO PARA ADAPTAR:
+    ESTRUTURA OBRIGATÓRIA (4 SEÇÕES):
+    1. EXPLICAÇÃO (Teoria básica com imagem literal).
+    2. ATIVIDADE PRÁTICA (Desafio de identificação, marcação ou ação).
+    3. EXPLICAÇÃO (Aplicação prática no cotidiano).
+    4. ATIVIDADE FINAL (Exercício de fixação lúdico).
+
+    ESTRATÉGIAS ESPECÍFICAS PARA ${discipline}:
+    - Inglês: Use palavras-chave (cores, saudações, animais) ligadas diretamente a figuras. Evite gramática complexa.
+    - Química: Foco em reações visíveis, estados da matéria (gelo, vapor) e segurança. Use analogias concretas.
+    - Matemática: Use contagem de objetos reais.
+    - Português: Foco em interpretação direta.
+    - Outras: Mantenha a simplicidade e o apoio visual constante.
+
+    DIRETRIZES DE PORTUGUÊS:
+    - Revise rigorosamente a ortografia e concordância.
+    - Não utilize gírias. Use linguagem clara e respeitosa.
+
+    CONTEÚDO ORIGINAL:
     ${originalContent}
 
-    Responda em JSON seguindo estritamente o esquema. No campo 'type', use 'explanation' para teoria e 'activity' para prática.
+    Responda em JSON seguindo o esquema. Identifique cada seção como 'explanation' ou 'activity'.
   `;
 
   try {
@@ -105,7 +105,7 @@ export const adaptLessonContent = async (
       grade
     };
   } catch (error) {
-    console.error("Erro na adaptação:", error);
+    console.error("Erro na adaptação pedagógica:", error);
     throw error;
   }
 };
@@ -114,8 +114,8 @@ export const generateLessonImage = async (prompt: string, isColoring: boolean = 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const finalPrompt = isColoring 
-    ? `Desenho linear para colorir, contornos pretos grossos e nítidos, fundo branco puro, sem sombras, estilo minimalista educativo para alunos com DI: ${prompt}`
-    : `Ilustração 3D educativa, estilo Pixar/Disney, fundo branco limpo, cores vibrantes, um único objeto central claro e grande, sem poluição visual: ${prompt}`;
+    ? `Desenho linear simplificado para colorir, contornos pretos grossos, fundo branco puro, estilo educativo para alunos com DI: ${prompt}`
+    : `Ilustração educativa 3D, estilo amigável, um único objeto central claro, fundo branco limpo, cores vivas, sem detalhes confusos: ${prompt}`;
 
   try {
     const response = await ai.models.generateContent({
@@ -133,7 +133,7 @@ export const generateLessonImage = async (prompt: string, isColoring: boolean = 
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    throw new Error("Imagem não gerada.");
+    throw new Error("Falha na geração da imagem.");
   } catch (error) {
     console.error("Erro na imagem:", error);
     throw error;

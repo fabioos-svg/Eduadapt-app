@@ -7,7 +7,7 @@
     <title>EduAdapt - Inclusão Criativa</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@300;400;500;600;700&family=Quicksand:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <!-- html2pdf.js bundle (includes html2canvas and jspdf) -->
+    <!-- html2pdf.js bundle -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         body {
@@ -17,6 +17,8 @@
         h1, h2, h3, .font-display {
             font-family: 'Fredoka', sans-serif;
         }
+        
+        /* Ajustes para Impressão e PDF */
         @media print {
             .no-print {
                 display: none !important;
@@ -29,12 +31,23 @@
             #printable-lesson {
                 box-shadow: none !important;
                 border: none !important;
-                padding: 0 !important;
+                padding: 15mm !important; /* Margem interna para A4 */
                 margin: 0 !important;
                 width: 100% !important;
+                max-width: 210mm !important; /* Largura padrão A4 */
+                background: white !important;
             }
-            /* Garantir que as imagens apareçam na impressão */
+            /* Evita quebra de conteúdo no meio de blocos importantes */
+            .break-inside-avoid {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            /* Garante que imagens não sejam cortadas */
             img {
+                max-width: 100% !important;
+                height: auto !important;
+                display: block !important;
+                page-break-inside: avoid !important;
                 print-color-adjust: exact;
                 -webkit-print-color-adjust: exact;
             }
