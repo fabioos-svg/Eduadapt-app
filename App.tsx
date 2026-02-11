@@ -67,7 +67,7 @@ const App: React.FC = () => {
   const handleAdapt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !school.trim() || !teacherName.trim()) {
-      setError('Por favor, preencha todos os campos obrigatórios.');
+      setError('Por favor, preencha todos os campos obrigatórios (Instituição, Professor e Conteúdo).');
       return;
     }
 
@@ -76,7 +76,10 @@ const App: React.FC = () => {
       setError(null);
       setLesson(null);
       
-      const adapted = await adaptLessonContent(inputText, discipline, teacherName, school, chapter, grade);
+      // Armazena o capítulo selecionado para garantir que não seja perdido
+      const currentSelectedChapter = chapter;
+      
+      const adapted = await adaptLessonContent(inputText, discipline, teacherName, school, currentSelectedChapter, grade);
       setLesson(adapted);
       setStatus('generating-images');
       
@@ -125,10 +128,10 @@ const App: React.FC = () => {
       return;
     }
     const opt = {
-      margin: [5, 5, 5, 5], // Margens mínimas em mm
-      filename: `EduAdapt_${lesson.discipline}_Cap${lesson.chapter}.pdf`,
+      margin: [10, 5, 10, 5],
+      filename: `Aula_${lesson.discipline}_Cap${lesson.chapter}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+      html2canvas: { scale: 2, useCORS: true, letterRendering: true, scrollY: 0 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
@@ -237,20 +240,33 @@ const App: React.FC = () => {
               </div>
 
               <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 space-y-4">
-                <label className="block text-slate-700 font-bold text-center uppercase text-xs tracking-widest">Disciplina</label>
+                <label className="block text-slate-700 font-bold text-center uppercase text-xs tracking-widest">Componente Curricular</label>
                 <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   {disciplinesList.map((d) => (
                     <button
                       key={d.id}
                       type="button"
                       onClick={() => setDiscipline(d.id)}
-                      className={`py-3 px-1 rounded-2xl font-bold text-[10px] transition-all flex flex-col items-center gap-2 border-2 ${discipline === d.id ? 'bg-blue-600 text-white border-blue-600 shadow-lg scale-105' : 'bg-white text-slate-400 border-slate-50 hover:border-slate-200'}`}
+                      className={`py-3 px-1 rounded-2xl font-bold text-[10px] transition-all flex flex-col items-center gap-2 border-2 ${discipline === d.id ? 'bg-blue-600 text-white border-blue-600 shadow-lg scale-105' : 'bg-white text-slate-500 border-slate-50 hover:border-slate-200'}`}
                     >
                       <span className="text-2xl">{d.emoji}</span>
                       <span className="text-center leading-tight">{d.label}</span>
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="bg-white p-8 rounded-[2rem] shadow-sm border border-slate-200 space-y-4 flex flex-col justify-center">
+                <label className="block text-slate-700 font-bold mb-2 text-center uppercase text-xs tracking-widest">Aula / Capítulo</label>
+                <select 
+                  value={chapter}
+                  onChange={(e) => setChapter(Number(e.target.value))}
+                  className="w-full py-3 px-4 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-700 outline-none appearance-none cursor-pointer text-center text-xl shadow-inner"
+                >
+                  {Array.from({ length: 30 }, (_, i) => i + 1).map((n) => (
+                    <option key={n} value={n}>Capítulo {n}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200">
@@ -293,7 +309,7 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            <article id="printable-lesson" className="bg-white rounded-[3rem] p-8 md:p-14 border-[10px] border-blue-50 shadow-2xl space-y-10 mx-auto max-w-[210mm]">
+            <article id="printable-lesson" className="bg-white rounded-[3rem] p-8 md:p-14 border-[10px] border-blue-50 shadow-2xl space-y-10 mx-auto max-w-[210mm] min-h-[297mm]">
               <div className="border-b-2 border-slate-100 pb-8 flex flex-col md:flex-row justify-between items-start gap-4">
                 <div className="space-y-1">
                   <h2 className="text-xl font-bold text-slate-800">{lesson.school}</h2>

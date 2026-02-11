@@ -13,30 +13,25 @@ export const adaptLessonContent = async (
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = `
-    Como especialista sênior em Educação Especial (DI), sua tarefa é adaptar o conteúdo abaixo.
-    FOCO: Visual máximo, texto mínimo (2-3 frases curtas por bloco) e correção gramatical absoluta.
+    Você é um especialista em Educação Especial (DI). Adapte este conteúdo de aula para o Capítulo ${chapter}.
+    FOCO: Visual máximo, texto curtíssimo e gramática impecável.
 
-    ESTRUTURA OBRIGATÓRIA (4 SEÇÕES):
-    1. EXPLICAÇÃO (Teoria básica com imagem literal).
-    2. ATIVIDADE PRÁTICA (Desafio de identificação, marcação ou ação).
-    3. EXPLICAÇÃO (Aplicação prática no cotidiano).
-    4. ATIVIDADE FINAL (Exercício de fixação lúdico).
+    ESTRUTURA OBRIGATÓRIA:
+    1. EXPLICAÇÃO (Conceito simples com imagem literal).
+    2. ATIVIDADE PRÁTICA (Desafio de identificar ou agir).
+    3. EXPLICAÇÃO (Uso no dia a dia).
+    4. ATIVIDADE FINAL (Fixação lúdica).
 
-    ESTRATÉGIAS ESPECÍFICAS PARA ${discipline}:
-    - Inglês: Use palavras-chave (cores, saudações, animais) ligadas diretamente a figuras. Evite gramática complexa.
-    - Química: Foco em reações visíveis, estados da matéria (gelo, vapor) e segurança. Use analogias concretas.
-    - Matemática: Use contagem de objetos reais.
-    - Português: Foco em interpretação direta.
-    - Outras: Mantenha a simplicidade e o apoio visual constante.
+    COMPONENTES ESPECÍFICOS PARA ${discipline}:
+    - Inglês: Palavras soltas ligadas a imagens.
+    - Química: Transformações visíveis e segurança.
+    - Matemática: Contagem concreta.
+    - Geral: Sem gírias, linguagem clara e acolhedora.
 
-    DIRETRIZES DE PORTUGUÊS:
-    - Revise rigorosamente a ortografia e concordância.
-    - Não utilize gírias. Use linguagem clara e respeitosa.
-
-    CONTEÚDO ORIGINAL:
+    CONTEÚDO ORIGINAL DA AULA:
     ${originalContent}
 
-    Responda em JSON seguindo o esquema. Identifique cada seção como 'explanation' ou 'activity'.
+    Responda em JSON. Não inclua o campo "chapter" no JSON retornado, use apenas o esquema solicitado.
   `;
 
   try {
@@ -101,7 +96,7 @@ export const adaptLessonContent = async (
       discipline,
       teacherName,
       school,
-      chapter,
+      chapter: Number(chapter), // Garante que o capítulo selecionado seja respeitado
       grade
     };
   } catch (error) {
@@ -114,8 +109,8 @@ export const generateLessonImage = async (prompt: string, isColoring: boolean = 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const finalPrompt = isColoring 
-    ? `Desenho linear simplificado para colorir, contornos pretos grossos, fundo branco puro, estilo educativo para alunos com DI: ${prompt}`
-    : `Ilustração educativa 3D, estilo amigável, um único objeto central claro, fundo branco limpo, cores vivas, sem detalhes confusos: ${prompt}`;
+    ? `Desenho linear simplificado para colorir, contornos pretos grossos, fundo branco puro, estilo educativo: ${prompt}`
+    : `Ilustração educativa 3D amigável, um único objeto central claro, fundo branco limpo, cores vivas: ${prompt}`;
 
   try {
     const response = await ai.models.generateContent({
