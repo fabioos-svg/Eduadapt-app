@@ -40,7 +40,10 @@ export type Discipline =
   | 'Geografia' 
   | 'Matemática'
   | 'Inglês'
-  | 'Química';
+  | 'Química'
+  | 'Biologia'
+  | 'Física'
+  | 'Espanhol';
 
 export type Grade = '6º EF' | '7º EF' | '8º EF' | '9º EF' | '1º EM' | '2º EM' | '3º EM';
 export type AppStatus = 'idle' | 'adapting' | 'generating-images' | 'ready' | 'error';

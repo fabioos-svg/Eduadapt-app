@@ -12,52 +12,46 @@ const LessonSectionCard: React.FC<Props> = ({ section, index }) => {
   const isActivity = section.type === 'activity';
   
   return (
-    <div className={`flex flex-col ${isEven ? 'md:flex-row' : 'md:flex-row-reverse'} gap-6 items-center py-6 border-b border-blue-50 last:border-0 break-inside-avoid`}>
-      <div className="flex-[1.2] space-y-3">
+    <div className={`flex flex-col ${isEven ? 'md:flex-row' : 'md:flex-row-reverse'} gap-6 items-center py-4 border-b border-blue-50 last:border-0 break-inside-avoid`}>
+      <div className="flex-[1.2] space-y-2">
         <div className="flex items-center gap-3">
-          <span className="bg-slate-800 text-white font-bold w-6 h-6 rounded-full flex items-center justify-center text-[10px] shadow-md">
+          <span className="bg-slate-800 text-white font-bold w-5 h-5 rounded-full flex items-center justify-center text-[9px] shadow-md">
             {index + 1}
           </span>
-          <span className={`px-3 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest shadow-sm ${
+          <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase tracking-widest shadow-sm ${
             isActivity 
               ? 'bg-amber-100 text-amber-700 border border-amber-200' 
               : 'bg-blue-100 text-blue-700 border border-blue-200'
           }`}>
-            {isActivity ? '✏️ Atividade' : '📖 Explicação'}
+            {isActivity ? '✏️ Atividade' : '📖 Lição'}
           </span>
         </div>
         
-        <h3 className="text-xl font-bold text-slate-800 leading-tight">
+        <h3 className="text-lg font-bold text-slate-800 leading-tight">
           {section.title}
         </h3>
         
-        <div className={`p-4 rounded-2xl border-2 leading-relaxed text-base font-medium ${
+        <div className={`p-4 rounded-2xl border leading-relaxed text-sm font-medium ${
           isActivity 
-            ? 'bg-amber-50/50 border-amber-100 text-amber-900' 
-            : 'bg-blue-50/50 border-blue-100 text-slate-700'
+            ? 'bg-amber-50/40 border-amber-100 text-amber-900' 
+            : 'bg-blue-50/40 border-blue-100 text-slate-700'
         }`}>
           {section.content}
         </div>
       </div>
 
-      <div className="flex-1 w-full max-w-[240px] md:max-w-[260px]">
+      <div className="flex-1 w-full max-w-[200px] md:max-w-[240px]">
         {section.imageUrl ? (
           <div className="relative">
-            <div className={`absolute -inset-2 rounded-[1.5rem] blur-lg opacity-10 transition-all duration-500 ${
-              isActivity ? 'bg-amber-400' : 'bg-blue-400'
-            }`}></div>
             <img 
               src={section.imageUrl} 
               alt={section.title} 
-              className="relative rounded-[1.5rem] shadow-lg w-full object-contain aspect-square bg-white border-2 border-white max-h-[240px]"
+              className="relative rounded-2xl shadow-md w-full object-contain aspect-square bg-white border border-slate-100 max-h-[200px]"
             />
           </div>
         ) : (
-          <div className="aspect-square bg-slate-50 animate-pulse rounded-[1.5rem] flex flex-col items-center justify-center text-slate-300 border-2 border-dashed border-slate-200">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <p className="text-[10px] font-bold text-center px-4 leading-tight">Criando apoio visual...</p>
+          <div className="aspect-square bg-slate-50 animate-pulse rounded-2xl flex flex-col items-center justify-center text-slate-300 border border-dashed border-slate-200">
+            <p className="text-[8px] font-bold text-center px-4 leading-tight uppercase">Gerando ilustração...</p>
           </div>
         )}
       </div>

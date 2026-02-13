@@ -2,6 +2,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AdaptedLesson, Discipline, Grade } from "../types";
 
+/**
+ * Serviço responsável pela adaptação pedagógica utilizando IA.
+ * A chave de API é obtida exclusivamente de process.env.API_KEY para garantir segurança máxima.
+ */
 export const adaptLessonContent = async (
   originalContent: string, 
   discipline: Discipline, 
@@ -10,28 +14,23 @@ export const adaptLessonContent = async (
   chapter: number,
   grade: Grade
 ): Promise<AdaptedLesson> => {
+  // Inicialização do cliente GenAI
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const prompt = `
-    Você é um especialista em Educação Especial (DI). Adapte este conteúdo de aula para o Capítulo ${chapter}.
-    FOCO: Visual máximo, texto curtíssimo e gramática impecável.
+    Como especialista em Educação Especial e Inclusiva (DI), sua missão é adaptar o conteúdo abaixo para o Capítulo ${chapter}.
+    
+    REGRAS DE OURO:
+    1. FOCO VISUAL: O texto deve servir de apoio para imagens. Use sentenças curtas e objetivas.
+    2. PEDAGOGIA: Aplique os princípios do Desenho Universal para Aprendizagem (DUA).
+    3. BNCC: Alinhe o conteúdo às habilidades da BNCC de forma descritiva. NÃO mencione códigos numéricos (ex: EF05CI05).
+    4. ESTRUTURA: Forneça 4 seções alternando entre 'explicação' (conceito) e 'atividade' (prática visual).
+    5. IDIOMA: Português impecável, sem gírias, adaptado para a idade do aluno (${grade}).
 
-    ESTRUTURA OBRIGATÓRIA:
-    1. EXPLICAÇÃO (Conceito simples com imagem literal).
-    2. ATIVIDADE PRÁTICA (Desafio de identificar ou agir).
-    3. EXPLICAÇÃO (Uso no dia a dia).
-    4. ATIVIDADE FINAL (Fixação lúdica).
-
-    COMPONENTES ESPECÍFICOS PARA ${discipline}:
-    - Inglês: Palavras soltas ligadas a imagens.
-    - Química: Transformações visíveis e segurança.
-    - Matemática: Contagem concreta.
-    - Geral: Sem gírias, linguagem clara e acolhedora.
-
-    CONTEÚDO ORIGINAL DA AULA:
+    CONTEÚDO ORIGINAL:
     ${originalContent}
 
-    Responda em JSON. Não inclua o campo "chapter" no JSON retornado, use apenas o esquema solicitado.
+    Responda EXCLUSIVAMENTE em formato JSON.
   `;
 
   try {
@@ -85,22 +84,17 @@ export const adaptLessonContent = async (
       }
     });
 
-    let text = response.text;
-    if (text.startsWith('```')) {
-      text = text.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-    }
-
-    const data = JSON.parse(text);
+    const data = JSON.parse(response.text.replace(/```json|```/g, ''));
     return {
       ...data,
       discipline,
       teacherName,
       school,
-      chapter: Number(chapter), // Garante que o capítulo selecionado seja respeitado
+      chapter: Number(chapter),
       grade
     };
   } catch (error) {
-    console.error("Erro na adaptação pedagógica:", error);
+    console.error("Erro na adaptação Pedagógica:", error);
     throw error;
   }
 };
@@ -109,17 +103,15 @@ export const generateLessonImage = async (prompt: string, isColoring: boolean = 
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const finalPrompt = isColoring 
-    ? `Desenho linear simplificado para colorir, contornos pretos grossos, fundo branco puro, estilo educativo: ${prompt}`
-    : `Ilustração educativa 3D amigável, um único objeto central claro, fundo branco limpo, cores vivas: ${prompt}`;
+    ? `Desenho linear simplificado para colorir, contornos pretos grossos e nítidos, fundo branco puro, estilo educativo para DI: ${prompt}`
+    : `Ilustração educativa 3D de alta qualidade, estilo amigável, cores vivas, um único objeto central claro, fundo branco limpo, sem texto: ${prompt}`;
 
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
       contents: { parts: [{ text: finalPrompt }] },
       config: {
-        imageConfig: {
-          aspectRatio: "1:1"
-        }
+        imageConfig: { aspectRatio: "1:1" }
       }
     });
 
@@ -128,9 +120,9 @@ export const generateLessonImage = async (prompt: string, isColoring: boolean = 
         return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
-    throw new Error("Falha na geração da imagem.");
+    throw new Error("Imagem não encontrada na resposta.");
   } catch (error) {
-    console.error("Erro na imagem:", error);
+    console.error("Erro na geração de imagem:", error);
     throw error;
   }
 };
