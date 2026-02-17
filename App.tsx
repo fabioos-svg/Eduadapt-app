@@ -334,16 +334,6 @@ const App: React.FC = () => {
                 </button>
               ))}
             </div>
-            
-            <div className="mt-20 text-center flex flex-col items-center gap-4">
-               <button 
-                 // @ts-ignore
-                 onClick={() => window.aistudio.openSelectKey()}
-                 className="text-blue-400 hover:text-blue-600 font-black text-[9px] uppercase tracking-widest transition-colors flex items-center gap-1"
-               >
-                 <span className="text-xs">⚙️</span> Configurações de API
-               </button>
-            </div>
           </div>
         )}
 
