@@ -2,6 +2,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AdaptedLesson, Discipline, Grade, LessonPlan, BNCCSearchResult, ProfessionalLesson, ExerciseSheet } from "../types";
 
+// Função para obter a instância do AI usando a chave mais atual do contexto
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const searchBNCCSkill = async (query: string): Promise<BNCCSearchResult> => {
@@ -253,11 +254,18 @@ export const generateLessonImage = async (prompt: string): Promise<string> => {
   if (!prompt) return "";
   try {
     const ai = getAI();
+    // Upgrade para Gemini 3 Pro Image (Alta Qualidade 1K)
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: { parts: [{ text: `Imagem pedagógica vibrante, artística e de alta qualidade, 4k, sem nenhum texto, letras ou marcas d'água: ${prompt}` }] },
-      config: { imageConfig: { aspectRatio: "1:1" } }
+      model: 'gemini-3-pro-image-preview',
+      contents: { parts: [{ text: `High-quality educational illustration, vibrant colors, clear shapes, 4k resolution, pedagogical style, no text: ${prompt}` }] },
+      config: { 
+        imageConfig: { 
+          aspectRatio: "1:1",
+          imageSize: "1K"
+        } 
+      }
     });
+    
     const candidate = response.candidates?.[0];
     if (candidate?.content?.parts) {
       for (const part of candidate.content.parts) {
@@ -267,8 +275,10 @@ export const generateLessonImage = async (prompt: string): Promise<string> => {
       }
     }
     return "";
-  } catch (err) { 
+  } catch (err: any) { 
     console.error("Erro na geração de imagem:", err);
+    // Propaga erro de entidade não encontrada para avisar que a chave expirou ou é inválida
+    if (err.message?.includes("not found")) throw err;
     return ""; 
   }
 };

@@ -6,7 +6,8 @@ import { AdaptedLesson, AppStatus, Discipline, Grade, AppMode, LessonPlan, BNCCS
 import { adaptLessonContent, generateLessonImage, generateLessonPlan, searchBNCCSkill, generateProfessionalLesson, generateExercises } from './services/geminiService';
 
 const App: React.FC = () => {
-  const [appMode, setAppMode] = useState<AppMode>('adaptation');
+  const [hasApiKey, setHasApiKey] = useState<boolean>(true); // Inicia como true para checar no useEffect
+  const [appMode, setAppMode] = useState<AppMode | null>(null);
   const [inputText, setInputText] = useState('');
   const [discipline, setDiscipline] = useState<Discipline>('Ciências');
   const [school, setSchool] = useState('');
@@ -36,6 +37,27 @@ const App: React.FC = () => {
   
   const [isEditingPlan, setIsEditingPlan] = useState(false);
 
+  useEffect(() => {
+    checkApiKey();
+  }, []);
+
+  const checkApiKey = async () => {
+    try {
+      // @ts-ignore - aistudio é fornecido pelo ambiente
+      const selected = await window.aistudio.hasSelectedApiKey();
+      setHasApiKey(selected);
+    } catch (e) {
+      // Se houver erro ou não estiver no ambiente AI Studio, assume que a chave injetada via env funcionará
+      setHasApiKey(true);
+    }
+  };
+
+  const handleSelectKey = async () => {
+    // @ts-ignore - aistudio é fornecido pelo ambiente
+    await window.aistudio.openSelectKey();
+    setHasApiKey(true);
+  };
+
   const disciplines: Discipline[] = [
     'Língua Portuguesa', 'Matemática', 'Ciências', 'Geografia', 'História', 
     'Educação Física', 'Arte', 'Ensino Religioso', 'Língua Inglesa',
@@ -64,7 +86,14 @@ const App: React.FC = () => {
     try {
       const result = await searchBNCCSkill(bnccQuery);
       setBnccResult(result);
-    } catch (err) { setError("Habilidade não encontrada."); }
+    } catch (err: any) { 
+      if (err.message?.includes("Requested entity was not found")) {
+        setHasApiKey(false);
+        setError("Erro de Chave de API. Por favor, selecione novamente.");
+      } else {
+        setError("Habilidade não encontrada."); 
+      }
+    }
     finally { setStatus('idle'); }
   };
 
@@ -85,7 +114,11 @@ const App: React.FC = () => {
       const res = await generateLessonPlan(teacherName, school, discipline, grade, lessonCount, bimesterLessonCount, "Geral", startDate, endDate, selectedSkills.map(s => s.code), selectedSkills.map(s => s.desc));
       setPlan(res); setStatus('ready');
       setIsEditingPlan(false);
-    } catch (err) { setError("Erro ao gerar plano BNCC."); setStatus('idle'); }
+    } catch (err: any) { 
+      setError("Erro ao gerar plano BNCC."); 
+      setStatus('idle');
+      if (err.message?.includes("not found")) setHasApiKey(false);
+    }
   };
 
   const handleAdapt = async (e: React.FormEvent) => {
@@ -103,7 +136,11 @@ const App: React.FC = () => {
         setLesson(prev => prev ? ({ ...prev, sections: [...updatedSections] }) : null);
       }
       setStatus('ready');
-    } catch (err) { setError("Erro na adaptação para DI."); setStatus('idle'); }
+    } catch (err: any) { 
+      setError("Erro na adaptação para DI."); 
+      setStatus('idle'); 
+      if (err.message?.includes("not found")) setHasApiKey(false);
+    }
   };
 
   const handleProSlides = async (e: React.FormEvent) => {
@@ -121,7 +158,11 @@ const App: React.FC = () => {
         setProLesson(prev => prev ? ({ ...prev, slides: [...updatedSlides] }) : null);
       }
       setStatus('ready');
-    } catch (err) { setError("Erro ao desenhar slides."); setStatus('idle'); }
+    } catch (err: any) { 
+      setError("Erro ao desenhar slides."); 
+      setStatus('idle'); 
+      if (err.message?.includes("not found")) setHasApiKey(false);
+    }
   };
 
   const handleExercisesGeneration = async (e: React.FormEvent) => {
@@ -135,7 +176,11 @@ const App: React.FC = () => {
       setExercises(res);
       setVisibleSupports({});
       setStatus('ready');
-    } catch (err) { setError("Erro ao criar exercícios."); setStatus('idle'); }
+    } catch (err: any) { 
+      setError("Erro ao criar exercícios."); 
+      setStatus('idle'); 
+      if (err.message?.includes("not found")) setHasApiKey(false);
+    }
   };
 
   const toggleSupport = (qIdx: number, level: number) => {
@@ -149,6 +194,11 @@ const App: React.FC = () => {
     setLesson(null); setPlan(null); setProLesson(null); setExercises(null); setInputText(''); setSelectedSkills([]); 
     setStatus('idle'); setError(null); setVisibleSupports({}); setIsEditingPlan(false);
   };
+
+  const fullReset = () => {
+    reset();
+    setAppMode(null);
+  }
 
   const handleSavePDF = (id: string, filename: string) => {
     const element = document.getElementById(id);
@@ -185,137 +235,280 @@ const App: React.FC = () => {
     setPlan({ ...plan, [field]: value });
   };
 
-  return (
-    <div className="min-h-screen bg-[#f0f9ff] font-sans pb-20">
-      <Header />
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        
-        <div className="flex justify-center gap-2 mb-10 no-print flex-wrap">
-          <button onClick={() => { setAppMode('adaptation'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'adaptation' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Aula Adaptada</button>
-          <button onClick={() => { setAppMode('planning'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'planning' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Plano de Aula</button>
-          <button onClick={() => { setAppMode('slides'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'slides' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Criar Aulas</button>
-          <button onClick={() => { setAppMode('exercises'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'exercises' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Criar Exercícios</button>
+  if (!hasApiKey) {
+    return (
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center px-4">
+        <div className="max-w-md w-full bg-white p-12 rounded-[3rem] shadow-2xl border border-blue-50 text-center">
+          <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">
+            🔑
+          </div>
+          <h2 className="text-2xl font-black text-slate-800 mb-4 tracking-tight">Configuração de Segurança</h2>
+          <p className="text-slate-500 font-medium mb-8 leading-relaxed">
+            Para proteger a privacidade e garantir o uso correto da ferramenta, selecione sua chave de API Google Cloud.
+          </p>
+          <div className="space-y-4">
+            <button 
+              onClick={handleSelectKey}
+              className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-blue-700 transition-all"
+            >
+              SELECIONAR MINHA CHAVE
+            </button>
+            <a 
+              href="https://ai.google.dev/gemini-api/docs/billing" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="block text-xs font-black text-blue-400 uppercase tracking-widest hover:text-blue-600 transition-colors"
+            >
+              COMO OBTER UMA CHAVE PAGA?
+            </a>
+          </div>
         </div>
+      </div>
+    );
+  }
 
-        {!lesson && !plan && !proLesson && !exercises && (
-          <form onSubmit={
-            appMode === 'adaptation' ? handleAdapt : 
-            appMode === 'planning' ? handlePlanning : 
-            appMode === 'slides' ? handleProSlides : 
-            handleExercisesGeneration
-          } className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-blue-50">
-                <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Professor(a)</label>
-                <input type="text" value={teacherName} onChange={e => setTeacherName(e.target.value)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50" placeholder="Nome completo" />
-              </div>
-              <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-blue-50">
-                <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Escola</label>
-                <input type="text" value={school} onChange={e => setSchool(e.target.value)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50" placeholder="Unidade Escolar" />
-              </div>
-              <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-blue-50">
-                <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Componente Curricular</label>
-                <select value={discipline} onChange={e => setDiscipline(e.target.value as Discipline)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50">
-                  {disciplines.map(d => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </div>
-              <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-blue-50">
-                <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Série / Etapa</label>
-                <select value={grade} onChange={e => setGrade(e.target.value as Grade)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50">
-                  {grades.map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
-              </div>
+  const features = [
+    {
+      id: 'adaptation',
+      title: 'Aula Adaptada',
+      desc: 'Adaptação pedagógica inclusiva para alunos com DI.',
+      icon: '🧩',
+      color: 'from-blue-500 to-cyan-400',
+      shadow: 'shadow-blue-200'
+    },
+    {
+      id: 'planning',
+      title: 'Plano de Aula',
+      desc: 'Planejamento completo estruturado nas normas BNCC.',
+      icon: '📋',
+      color: 'from-purple-500 to-pink-400',
+      shadow: 'shadow-purple-200'
+    },
+    {
+      id: 'slides',
+      title: 'Criar Aulas',
+      desc: 'Design instrucional de alto impacto e slides prontos.',
+      icon: '🚀',
+      color: 'from-indigo-600 to-blue-500',
+      shadow: 'shadow-indigo-200'
+    },
+    {
+      id: 'exercises',
+      title: 'Criar Exercícios',
+      desc: 'Listas de atividades com níveis de suporte inclusivo.',
+      icon: '📝',
+      color: 'from-emerald-500 to-teal-400',
+      shadow: 'shadow-emerald-200'
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-[#f8fafc] font-sans pb-20">
+      <Header onLogoClick={fullReset} />
+      
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        
+        {!appMode && (
+          <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
+            <div className="text-center mb-16 mt-8">
+              <h2 className="text-5xl font-black text-slate-800 mb-4 tracking-tight">O que vamos criar hoje?</h2>
+              <p className="text-xl text-slate-500 font-medium max-w-2xl mx-auto">Selecione uma ferramenta inteligente para transformar sua prática pedagógica e promover a inclusão.</p>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+              {features.map((f) => (
+                <button
+                  key={f.id}
+                  onClick={() => setAppMode(f.id as AppMode)}
+                  className={`group relative bg-white p-8 rounded-[2.5rem] text-left transition-all duration-300 hover:-translate-y-3 shadow-xl ${f.shadow} border border-slate-100 hover:border-transparent`}
+                >
+                  <div className={`absolute inset-0 bg-gradient-to-br ${f.color} opacity-0 group-hover:opacity-5 rounded-[2.5rem] transition-opacity`} />
+                  <div className={`w-16 h-16 rounded-3xl bg-gradient-to-br ${f.color} flex items-center justify-center text-3xl mb-6 shadow-lg transform transition-transform group-hover:scale-110 group-hover:rotate-6`}>
+                    {f.icon}
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-800 mb-3 tracking-tight group-hover:text-blue-600 transition-colors">{f.title}</h3>
+                  <p className="text-slate-500 font-bold leading-relaxed">{f.desc}</p>
+                  <div className="mt-8 flex items-center gap-2 text-sm font-black text-blue-500 uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity">
+                    Começar <span>→</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+            
+            <div className="mt-20 text-center flex flex-col items-center gap-4">
+               <button 
+                 // @ts-ignore
+                 onClick={() => window.aistudio.openSelectKey()}
+                 className="text-blue-400 hover:text-blue-600 font-black text-[9px] uppercase tracking-widest transition-colors flex items-center gap-1"
+               >
+                 <span className="text-xs">⚙️</span> Configurações de API
+               </button>
+            </div>
+          </div>
+        )}
+
+        {appMode && (
+          <div className="no-print mb-8">
+            <button 
+              onClick={fullReset}
+              className="flex items-center gap-2 text-slate-400 font-bold hover:text-blue-500 transition-colors"
+            >
+              ← Voltar ao Início
+            </button>
+          </div>
+        )}
+
+        {appMode && !lesson && !plan && !proLesson && !exercises && (
+          <div className="max-w-4xl mx-auto">
+            <div className="mb-10 text-center">
+              <span className="bg-blue-100 text-blue-600 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest border border-blue-200">
+                {features.find(f => f.id === appMode)?.title}
+              </span>
+              <h2 className="text-3xl font-black text-slate-800 mt-4">Preencha os detalhes da aula</h2>
             </div>
 
-            {appMode === 'planning' && (
-              <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-50 space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                   <div className="bg-blue-50/50 p-4 rounded-xl">
-                      <label className="block text-[8px] font-black uppercase text-blue-400 mb-1">Qtd. Aulas (Plano)</label>
-                      <input type="number" min="1" value={lessonCount} onChange={e => setLessonCount(e.target.value)} className="w-full bg-transparent font-bold outline-none border-b border-blue-200" />
+            <form onSubmit={
+              appMode === 'adaptation' ? handleAdapt : 
+              appMode === 'planning' ? handlePlanning : 
+              appMode === 'slides' ? handleProSlides : 
+              handleExercisesGeneration
+            } className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-blue-50">
+                  <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Professor(a)</label>
+                  <input type="text" value={teacherName} onChange={e => setTeacherName(e.target.value)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50" placeholder="Nome completo" />
+                </div>
+                <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-blue-50">
+                  <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Escola</label>
+                  <input type="text" value={school} onChange={e => setSchool(e.target.value)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50" placeholder="Unidade Escolar" />
+                </div>
+                <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-blue-50">
+                  <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Componente Curricular</label>
+                  <select value={discipline} onChange={e => setDiscipline(e.target.value as Discipline)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50">
+                    {disciplines.map(d => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-blue-50">
+                  <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Série / Etapa</label>
+                  <select value={grade} onChange={e => setGrade(e.target.value as Grade)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50">
+                    {grades.map(g => <option key={g} value={g}>{g}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {appMode === 'planning' && (
+                <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-50 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                     <div className="bg-blue-50/50 p-4 rounded-xl">
+                        <label className="block text-[8px] font-black uppercase text-blue-400 mb-1">Qtd. Aulas (Plano)</label>
+                        <input type="number" min="1" value={lessonCount} onChange={e => setLessonCount(e.target.value)} className="w-full bg-transparent font-bold outline-none border-b border-blue-200" />
+                     </div>
+                     <div className="bg-blue-50/50 p-4 rounded-xl">
+                        <label className="block text-[8px] font-black uppercase text-blue-400 mb-1">Qtd. Aulas (Bimestre)</label>
+                        <input type="number" min="1" value={bimesterLessonCount} onChange={e => setBimesterLessonCount(e.target.value)} className="w-full bg-transparent font-bold outline-none border-b border-blue-200" />
+                     </div>
+                     <div className="bg-blue-50/50 p-4 rounded-xl">
+                        <label className="block text-[8px] font-black uppercase text-blue-400 mb-1">Início / Fim</label>
+                        <div className="flex gap-2">
+                          <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full text-[10px] font-bold outline-none bg-transparent" />
+                          <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full text-[10px] font-bold outline-none bg-transparent" />
+                        </div>
+                     </div>
+                  </div>
+                  <div className="flex gap-2 mt-4">
+                    <input type="text" value={bnccQuery} onChange={e => setBnccQuery(e.target.value)} placeholder="Busque habilidade BNCC..." className="flex-1 bg-blue-50/50 p-3 rounded-xl font-bold border border-blue-50 outline-none" />
+                    <button type="button" disabled={isSearchingBNCC} onClick={handleBNCCSearch} className="bg-blue-600 text-white px-8 rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 min-w-[120px]">
+                      {isSearchingBNCC ? (
+                        <svg className="animate-spin h-4 w-4 mx-auto text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                      ) : 'Buscar'}
+                    </button>
+                  </div>
+                  {bnccResult && (
+                    <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 animate-in fade-in slide-in-from-top-2">
+                      <p className="font-bold text-emerald-800">{bnccResult.code}</p>
+                      <p className="text-xs text-emerald-600 mb-2">{bnccResult.description}</p>
+                      
+                      {bnccResult.sources && bnccResult.sources.length > 0 && (
+                        <div className="mt-2 mb-3 p-3 bg-white/60 rounded-xl border border-emerald-100 shadow-sm">
+                          <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-2 flex items-center gap-1">
+                            <span>🔍</span> Fontes Verificadas:
+                          </p>
+                          <div className="flex flex-col gap-1.5">
+                            {bnccResult.sources.map((source, i) => (
+                              <a 
+                                key={i} 
+                                href={source.uri} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-[10px] text-blue-600 hover:text-blue-800 underline decoration-blue-200 transition-colors flex items-center gap-1"
+                              >
+                                <span className="opacity-50">🔗</span>
+                                <span className="truncate max-w-[320px]">{source.title || source.uri}</span>
+                              </a>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <button type="button" onClick={addSkillToPlan} className="bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-600">ADICIONAR AO PLANO</button>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-2 min-h-[40px]">
+                    {selectedSkills.map(s => <div key={s.code} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-bold border border-blue-200 flex items-center gap-2">{s.code} <button onClick={() => setSelectedSkills(selectedSkills.filter(sk => sk.code !== s.code))} className="text-blue-400 hover:text-blue-700">×</button></div>)}
+                  </div>
+                </div>
+              )}
+
+              {appMode === 'exercises' && (
+                <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-50 space-y-8">
+                   <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 text-center">
+                     <label className="block text-blue-600 font-black text-xs uppercase mb-4 tracking-widest">Quantidade de Questões</label>
+                     <input type="range" min="1" max="15" value={exerciseCount} onChange={e => setExerciseCount(parseInt(e.target.value))} className="w-full accent-blue-600 mb-2" />
+                     <p className="font-black text-blue-600 text-2xl">{exerciseCount}</p>
                    </div>
-                   <div className="bg-blue-50/50 p-4 rounded-xl">
-                      <label className="block text-[8px] font-black uppercase text-blue-400 mb-1">Qtd. Aulas (Bimestre)</label>
-                      <input type="number" min="1" value={bimesterLessonCount} onChange={e => setBimesterLessonCount(e.target.value)} className="w-full bg-transparent font-bold outline-none border-b border-blue-200" />
+                   <div className="flex flex-wrap justify-center gap-3">
+                      {[
+                        {id: 'multiple_choice', label: 'Alternativa'},
+                        {id: 'true_false', label: 'V / F'},
+                        {id: 'open', label: 'Dissertativa'}
+                      ].map(t => (
+                        <button key={t.id} type="button" onClick={() => toggleExerciseType(t.id)} className={`px-6 py-2 rounded-xl text-xs font-bold border transition-all ${selectedExerciseTypes.includes(t.id) ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-blue-400 border-blue-100 hover:border-blue-300'}`}>{t.label}</button>
+                      ))}
                    </div>
-                   <div className="bg-blue-50/50 p-4 rounded-xl">
-                      <label className="block text-[8px] font-black uppercase text-blue-400 mb-1">Início / Fim</label>
-                      <div className="flex gap-2">
-                        <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full text-[10px] font-bold outline-none bg-transparent" />
-                        <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full text-[10px] font-bold outline-none bg-transparent" />
+                   <div className="flex items-center justify-center gap-4 bg-emerald-50 p-6 rounded-3xl border border-emerald-100 shadow-inner">
+                      <div className="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" checked={isAdaptedExercises} onChange={e => setIsAdaptedExercises(e.target.checked)} id="adEx" className="w-5 h-5 accent-emerald-600 cursor-pointer" />
+                        <label htmlFor="adEx" className="text-sm font-black text-emerald-800 cursor-pointer select-none uppercase">Adaptar para Inclusão (Níveis de Suporte)</label>
                       </div>
                    </div>
                 </div>
-                <div className="flex gap-2 mt-4">
-                  <input type="text" value={bnccQuery} onChange={e => setBnccQuery(e.target.value)} placeholder="Busque habilidade BNCC..." className="flex-1 bg-blue-50/50 p-3 rounded-xl font-bold border border-blue-50 outline-none" />
-                  <button type="button" disabled={isSearchingBNCC} onClick={handleBNCCSearch} className="bg-blue-600 text-white px-8 rounded-xl font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 min-w-[120px]">
-                    {isSearchingBNCC ? (
-                      <svg className="animate-spin h-4 w-4 mx-auto text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                    ) : 'Buscar'}
-                  </button>
-                </div>
-                {bnccResult && (
-                  <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 animate-in fade-in slide-in-from-top-2">
-                    <p className="font-bold text-emerald-800">{bnccResult.code}</p>
-                    <p className="text-xs text-emerald-600 mb-2">{bnccResult.description}</p>
-                    <button type="button" onClick={addSkillToPlan} className="bg-emerald-500 text-white px-4 py-1.5 rounded-lg text-xs font-black hover:bg-emerald-600">ADICIONAR AO PLANO</button>
-                  </div>
-                )}
-                <div className="flex flex-wrap gap-2 min-h-[40px]">
-                  {selectedSkills.map(s => <div key={s.code} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-[10px] font-bold border border-blue-200 flex items-center gap-2">{s.code} <button onClick={() => setSelectedSkills(selectedSkills.filter(sk => sk.code !== s.code))} className="text-blue-400 hover:text-blue-700">×</button></div>)}
-                </div>
-              </div>
-            )}
+              )}
 
-            {appMode === 'exercises' && (
-              <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-50 space-y-8">
-                 <div className="bg-blue-50/50 p-6 rounded-2xl border border-blue-100 text-center">
-                   <label className="block text-blue-600 font-black text-xs uppercase mb-4 tracking-widest">Quantidade de Questões</label>
-                   <input type="range" min="1" max="15" value={exerciseCount} onChange={e => setExerciseCount(parseInt(e.target.value))} className="w-full accent-blue-600 mb-2" />
-                   <p className="font-black text-blue-600 text-2xl">{exerciseCount}</p>
-                 </div>
-                 <div className="flex flex-wrap justify-center gap-3">
-                    {[
-                      {id: 'multiple_choice', label: 'Alternativa'},
-                      {id: 'true_false', label: 'V / F'},
-                      {id: 'open', label: 'Dissertativa'}
-                    ].map(t => (
-                      <button key={t.id} type="button" onClick={() => toggleExerciseType(t.id)} className={`px-6 py-2 rounded-xl text-xs font-bold border transition-all ${selectedExerciseTypes.includes(t.id) ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-blue-400 border-blue-100 hover:border-blue-300'}`}>{t.label}</button>
-                    ))}
-                 </div>
-                 <div className="flex items-center justify-center gap-4 bg-emerald-50 p-6 rounded-3xl border border-emerald-100 shadow-inner">
-                    <div className="flex items-center gap-3 cursor-pointer">
-                      <input type="checkbox" checked={isAdaptedExercises} onChange={e => setIsAdaptedExercises(e.target.checked)} id="adEx" className="w-5 h-5 accent-emerald-600 cursor-pointer" />
-                      <label htmlFor="adEx" className="text-sm font-black text-emerald-800 cursor-pointer select-none uppercase">Adaptar para Inclusão (Níveis de Suporte)</label>
-                    </div>
-                 </div>
-              </div>
-            )}
-
-            {(appMode === 'adaptation' || appMode === 'slides' || appMode === 'exercises') && (
-              <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-50">
-                <label className="block text-blue-400 font-bold text-[10px] uppercase mb-3 tracking-widest text-center">Conteúdo base da aula / apostila</label>
-                <textarea value={inputText} onChange={e => setInputText(e.target.value)} className="w-full h-64 bg-blue-50/50 p-6 rounded-3xl font-medium outline-none border border-blue-50 focus:ring-2 focus:ring-blue-100 transition-all" placeholder="Cole aqui o texto que será transformado..." />
-              </div>
-            )}
-
-            {error && <div className="bg-red-50 text-red-500 p-4 rounded-2xl font-bold text-center border border-red-100 animate-pulse">{error}</div>}
-
-            <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white py-6 rounded-[2.5rem] text-2xl font-black shadow-2xl hover:scale-[1.02] transition-all disabled:opacity-50">
-              {status === 'idle' || status === 'searching-bncc' ? 'GERAR AGORA' : (
-                <div className="flex items-center justify-center gap-3">
-                  <svg className="animate-spin h-6 w-6 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  <span>{status === 'generating-images' ? 'GERANDO ILUSTRAÇÕES...' : 'PROCESSANDO...'}</span>
+              {(appMode === 'adaptation' || appMode === 'slides' || appMode === 'exercises') && (
+                <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-50">
+                  <label className="block text-blue-400 font-bold text-[10px] uppercase mb-3 tracking-widest text-center">Conteúdo base da aula / apostila</label>
+                  <textarea value={inputText} onChange={e => setInputText(e.target.value)} className="w-full h-64 bg-blue-50/50 p-6 rounded-3xl font-medium outline-none border border-blue-50 focus:ring-2 focus:ring-blue-100 transition-all" placeholder="Cole aqui o texto que será transformado..." />
                 </div>
               )}
-            </button>
-          </form>
+
+              {error && <div className="bg-red-50 text-red-500 p-4 rounded-2xl font-bold text-center border border-red-100 animate-pulse">{error}</div>}
+
+              <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white py-6 rounded-[2.5rem] text-2xl font-black shadow-2xl hover:scale-[1.02] transition-all disabled:opacity-50">
+                {status === 'idle' || status === 'searching-bncc' ? 'GERAR AGORA' : (
+                  <div className="flex items-center justify-center gap-3">
+                    <svg className="animate-spin h-6 w-6 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    <span>{status === 'generating-images' ? 'GERANDO ILUSTRAÇÕES...' : 'PROCESSANDO...'}</span>
+                  </div>
+                )}
+              </button>
+            </form>
+          </div>
         )}
 
         {exercises && (
           <div className="space-y-10 animate-in fade-in duration-500">
             <div className="flex justify-center gap-4 no-print flex-wrap">
-               <button onClick={reset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Novo Trabalho</button>
+               <button onClick={fullReset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Novo Trabalho</button>
                <button onClick={() => handleSavePDF('printable-exercises', 'Exercicios.pdf')} className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar Lista PDF</button>
             </div>
             <article id="printable-exercises" className="bg-white p-12 rounded-[2.5rem] shadow-2xl border border-slate-100 space-y-10">
@@ -374,7 +567,6 @@ const App: React.FC = () => {
                  ))}
                </div>
 
-               {/* Seção de Gabarito */}
                <div className="mt-20 pt-10 border-t-4 border-slate-100 break-before-page">
                   <h2 className="text-2xl font-black text-slate-800 uppercase mb-8 flex items-center gap-3">
                     <span className="bg-slate-800 text-white p-2 rounded-lg">
@@ -408,7 +600,7 @@ const App: React.FC = () => {
         {lesson && (
           <div className="space-y-10 animate-in fade-in duration-500">
             <div className="flex justify-center gap-4 no-print">
-               <button onClick={reset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Voltar</button>
+               <button onClick={fullReset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Voltar</button>
                <button onClick={() => handleSavePDF('printable-lesson', 'Aula_DI.pdf')} className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold">Baixar PDF</button>
             </div>
             <article id="printable-lesson" className="bg-white p-12 rounded-[2.5rem] shadow-2xl border border-blue-50 space-y-10">
@@ -423,7 +615,6 @@ const App: React.FC = () => {
                   ))}
                </div>
 
-               {/* Atividades Práticas */}
                {lesson.practicalActivities && lesson.practicalActivities.length > 0 && (
                  <section className="mt-12 space-y-8 break-before-page">
                     <h2 className="text-2xl font-black text-blue-600 uppercase border-b-4 border-blue-100 pb-2">🖐️ Atividades Práticas</h2>
@@ -445,7 +636,6 @@ const App: React.FC = () => {
                  </section>
                )}
 
-               {/* Atividade para Casa */}
                {lesson.familyActivity && (
                  <section className="mt-12 break-before-page p-10 bg-emerald-50 rounded-[3rem] border-4 border-emerald-100 shadow-inner relative overflow-hidden">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-100/50 rounded-full -mr-16 -mt-16" />
@@ -473,7 +663,7 @@ const App: React.FC = () => {
         {proLesson && (
           <div className="space-y-10 animate-in fade-in duration-500">
             <div className="flex justify-center gap-4 no-print flex-wrap">
-               <button onClick={reset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Voltar</button>
+               <button onClick={fullReset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Voltar</button>
                <button onClick={handleExportPPTX} className="bg-orange-500 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">PowerPoint (.pptx)</button>
                <button onClick={() => handleSavePDF('printable-slides', 'Aula_Apresentacao.pdf')} className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Salvar PDF</button>
             </div>
@@ -527,7 +717,7 @@ const App: React.FC = () => {
         {plan && (
           <div className="space-y-10 animate-in fade-in duration-500">
              <div className="flex justify-center gap-4 no-print flex-wrap">
-                <button onClick={reset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Novo Plano</button>
+                <button onClick={fullReset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Novo Plano</button>
                 <button onClick={() => setIsEditingPlan(!isEditingPlan)} className={`px-8 py-3 rounded-2xl font-bold border transition-all ${isEditingPlan ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-blue-600 border-blue-600'}`}>
                   {isEditingPlan ? 'Finalizar Edição' : 'Editar Plano'}
                 </button>
