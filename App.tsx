@@ -12,7 +12,7 @@ const App: React.FC = () => {
   const [discipline, setDiscipline] = useState<Discipline>('Ciências');
   const [school, setSchool] = useState('');
   const [teacherName, setTeacherName] = useState('');
-  const [grade, setGrade] = useState<Grade>('8º ano (Fundamental - Finais)');
+  const [grade, setGrade] = useState<Grade>('6º ano (Fundamental II)');
   const [status, setStatus] = useState<AppStatus>('idle');
   
   const [lesson, setLesson] = useState<AdaptedLesson | null>(null);
@@ -68,6 +68,9 @@ const App: React.FC = () => {
       const result = await searchBNCCSkill(bnccQuery);
       setBnccResult(result);
     } catch (err: any) { 
+      if (err.message?.includes("Requested entity was not found")) {
+        setHasApiKey(false);
+      }
       setError("Habilidade não encontrada."); 
     }
     finally { setStatus('idle'); }
@@ -106,6 +109,9 @@ const App: React.FC = () => {
       );
       setPlan(res); setStatus('ready');
     } catch (err: any) { 
+      if (err.message?.includes("Requested entity was not found")) {
+        setHasApiKey(false);
+      }
       setError("Erro ao gerar plano BNCC."); 
       setStatus('idle');
     }
@@ -127,6 +133,9 @@ const App: React.FC = () => {
       }
       setStatus('ready');
     } catch (err: any) { 
+      if (err.message?.includes("Requested entity was not found")) {
+        setHasApiKey(false);
+      }
       setError("Erro na adaptação para DI. Verifique sua chave."); 
       setStatus('idle'); 
     }
@@ -144,10 +153,14 @@ const App: React.FC = () => {
       for (let i = 0; i < updatedSlides.length; i++) {
         const url = await generateLessonImage(updatedSlides[i].imagePrompt);
         updatedSlides[i].imageUrl = url;
+        // Incrementally update slides to show progress
         setProLesson(prev => prev ? ({ ...prev, slides: [...updatedSlides] }) : null);
       }
       setStatus('ready');
     } catch (err: any) { 
+      if (err.message?.includes("Requested entity was not found")) {
+        setHasApiKey(false);
+      }
       setError("Erro ao desenhar slides."); 
       setStatus('idle'); 
     }
@@ -164,6 +177,9 @@ const App: React.FC = () => {
       setVisibleSupports({});
       setStatus('ready');
     } catch (err: any) { 
+      if (err.message?.includes("Requested entity was not found")) {
+        setHasApiKey(false);
+      }
       setError("Erro ao criar exercícios."); 
       setStatus('idle'); 
     }
@@ -190,15 +206,27 @@ const App: React.FC = () => {
   const handleExportPPTX = () => {
     if (!proLesson) return;
     const pptx = new (window as any).PptxGenJS();
+    
+    // Slide de Capa
     const slideCapa = pptx.addSlide();
     slideCapa.background = { color: "0F172A" };
     slideCapa.addText(proLesson.title, { x: 0.5, y: 1.5, w: 9, align: "center", fontSize: 36, bold: true, color: "FFFFFF" });
+    slideCapa.addText(`${discipline} • ${grade}`, { x: 0.5, y: 2.5, w: 9, align: "center", fontSize: 18, color: "3B82F6" });
+
+    // Slides de Conteúdo
     proLesson.slides.forEach((slide: any) => {
       const pSlide = pptx.addSlide();
       pSlide.addText(slide.title, { x: 0.5, y: 0.3, w: 9, fontSize: 24, bold: true, color: "1E293B" });
       pSlide.addText(slide.topics.join('\n'), { x: 0.5, y: 1.0, w: 4.5, h: 3.5, fontSize: 14, color: "475569" });
-      if (slide.imageUrl) pSlide.addImage({ data: slide.imageUrl, x: 5.2, y: 1.0, w: 4.3, h: 4.4 });
+      
+      // Adicionar conteúdo detalhado nas notas de rodapé ou área oculta (usaremos uma caixa de texto menor)
+      pSlide.addText("NOTAS DO PROFESSOR:\n" + slide.detailedContent, { x: 0.5, y: 4.5, w: 9, h: 1.0, fontSize: 10, color: "94A3B8", italic: true });
+
+      if (slide.imageUrl) {
+        pSlide.addImage({ data: slide.imageUrl, x: 5.2, y: 1.0, w: 4.3, h: 4.4 });
+      }
     });
+
     pptx.writeFile({ fileName: `Aula_${proLesson.title}.pptx` });
   };
 
@@ -224,6 +252,7 @@ const App: React.FC = () => {
           <div className="w-20 h-20 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto mb-6 text-3xl">🔑</div>
           <h2 className="text-2xl font-black text-slate-800 mb-4 tracking-tight">Configuração de Segurança</h2>
           <p className="text-slate-500 font-medium mb-8 leading-relaxed">Para proteger a privacidade e garantir o uso correto da ferramenta, selecione sua chave de API Google Cloud.</p>
+          <a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noopener noreferrer" className="block text-xs text-blue-500 mb-6 hover:underline">Saiba mais sobre faturamento e chaves API</a>
           <button onClick={handleSelectKey} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-blue-700 transition-all">SELECIONAR MINHA CHAVE</button>
         </div>
       </div>
@@ -238,7 +267,22 @@ const App: React.FC = () => {
   ];
 
   const disciplinesList = ['Língua Portuguesa', 'Matemática', 'Ciências', 'Geografia', 'História', 'Educação Física', 'Arte', 'Ensino Religioso', 'Língua Inglesa', 'Biologia', 'Física', 'Química', 'Sociologia', 'Filosofia'];
-  const gradesList = ['Educação Infantil', '1º ao 5º ano (Fundamental - Iniciais)', '6º ao 9º ano (Fundamental - Finais)', 'Ensino Médio'];
+  
+  const gradesList = [
+    'Educação Infantil',
+    '1º ano (Fundamental I)',
+    '2º ano (Fundamental I)',
+    '3º ano (Fundamental I)',
+    '4º ano (Fundamental I)',
+    '5º ano (Fundamental I)',
+    '6º ano (Fundamental II)',
+    '7º ano (Fundamental II)',
+    '8º ano (Fundamental II)',
+    '9º ano (Fundamental II)',
+    '1ª série (Ensino Médio)',
+    '2ª série (Ensino Médio)',
+    '3ª série (Ensino Médio)'
+  ];
 
   return (
     <div className="min-h-screen bg-[#f8fafc] font-sans pb-20">
@@ -340,12 +384,29 @@ const App: React.FC = () => {
                       {status === 'searching-bncc' && <p className="text-xs font-bold text-blue-400 animate-pulse">Buscando na BNCC...</p>}
                       
                       {bnccResult && (
-                        <div className="p-4 bg-white border-2 border-blue-100 rounded-2xl flex items-center justify-between gap-4 animate-in fade-in zoom-in-95">
-                          <div className="flex-1">
-                            <span className="font-black text-blue-600 block">{bnccResult.code}</span>
-                            <span className="text-sm font-medium text-slate-600">{bnccResult.description}</span>
+                        <div className="p-4 bg-white border-2 border-blue-100 rounded-2xl flex flex-col gap-4 animate-in fade-in zoom-in-95">
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="flex-1">
+                              <span className="font-black text-blue-600 block">{bnccResult.code}</span>
+                              <span className="text-sm font-medium text-slate-600">{bnccResult.description}</span>
+                            </div>
+                            <button type="button" onClick={addSkillToPlan} className="bg-emerald-500 text-white p-2 rounded-lg shadow-lg">Adicionar</button>
                           </div>
-                          <button type="button" onClick={addSkillToPlan} className="bg-emerald-500 text-white p-2 rounded-lg shadow-lg">Adicionar</button>
+                          {bnccResult.sources && bnccResult.sources.length > 0 && (
+                            <div className="border-t border-slate-100 pt-2">
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Fontes consultadas:</p>
+                              <div className="flex flex-wrap gap-2">
+                                {bnccResult.sources.map((src, i) => (
+                                  <a key={i} href={src.uri} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:underline flex items-center gap-1 bg-blue-50 px-2 py-1 rounded">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                    </svg>
+                                    {src.title}
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
@@ -408,10 +469,13 @@ const App: React.FC = () => {
                  </div>
                )}
 
-               <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-50">
-                  <label className="block text-blue-400 font-bold text-[10px] uppercase mb-3 tracking-widest text-center">Conteúdo base da aula / apostila</label>
-                  <textarea value={inputText} onChange={e => setInputText(e.target.value)} className="w-full h-64 bg-blue-50/50 p-6 rounded-3xl font-medium outline-none border border-blue-50" placeholder="Cole aqui o texto que será transformado..." />
-               </div>
+               {appMode !== 'planning' && (
+                 <div className="bg-white p-8 rounded-[2rem] shadow-xl border border-blue-50">
+                    <label className="block text-blue-400 font-bold text-[10px] uppercase mb-3 tracking-widest text-center">Conteúdo base da aula / apostila</label>
+                    <textarea value={inputText} onChange={e => setInputText(e.target.value)} className="w-full h-64 bg-blue-50/50 p-6 rounded-3xl font-medium outline-none border border-blue-50" placeholder="Cole aqui o texto que será transformado..." />
+                 </div>
+               )}
+
                {error && <p className="text-red-500 text-center font-bold animate-pulse">{error}</p>}
                <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white py-6 rounded-[2.5rem] text-2xl font-black shadow-2xl hover:scale-[1.02] transition-all disabled:opacity-50">
                 {isLoading ? 'PROCESSANDO...' : 'GERAR AGORA'}
@@ -428,7 +492,6 @@ const App: React.FC = () => {
             </div>
             
             <article id="printable-plan" className="bg-white p-8 md:p-12 shadow-2xl border border-slate-200 text-slate-800 leading-tight">
-              {/* Header Tabela */}
               <div className="border-4 border-slate-800">
                 <div className="bg-slate-800 text-white p-4 text-center">
                   <input 
@@ -446,7 +509,6 @@ const App: React.FC = () => {
                   />
                 </div>
 
-                {/* Subheader Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 border-b-2 border-slate-800">
                   <div className="p-3 border-r-2 border-slate-800 flex gap-2">
                     <span className="font-black whitespace-nowrap">Professor:</span>
@@ -469,7 +531,6 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Detalhamento Section */}
                 <div className="bg-slate-800 text-white p-2 font-black uppercase text-sm tracking-widest text-center">Detalhamento do Plano</div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 border-b-2 border-slate-800">
@@ -483,7 +544,6 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Habilidades */}
                 <div className="p-4 border-b-2 border-slate-800">
                   <div className="font-black mb-2 uppercase text-sm flex items-center gap-2">
                     <span className="w-2 h-6 bg-slate-800"></span> Habilidades trabalhadas:
@@ -498,7 +558,6 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Objetivos */}
                 <div className="p-4 border-b-2 border-slate-800">
                   <div className="font-black mb-2 uppercase text-sm flex items-center gap-2">
                     <span className="w-2 h-6 bg-slate-800"></span> Objetivos:
@@ -510,7 +569,6 @@ const App: React.FC = () => {
                   </ul>
                 </div>
 
-                {/* Metodologia */}
                 <div className="p-4 border-b-2 border-slate-800">
                   <div className="font-black mb-2 uppercase text-sm flex items-center gap-2">
                     <span className="w-2 h-6 bg-slate-800"></span> Metodologia / Orientações aos alunos:
@@ -522,7 +580,6 @@ const App: React.FC = () => {
                   />
                 </div>
 
-                {/* Recursos */}
                 <div className="p-4 border-b-2 border-slate-800">
                   <div className="font-black mb-2 uppercase text-sm flex items-center gap-2">
                     <span className="w-2 h-6 bg-slate-800"></span> Recursos utilizados:
@@ -534,7 +591,6 @@ const App: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Avaliação */}
                 <div className="p-4">
                   <div className="font-black mb-2 uppercase text-sm flex items-center gap-2">
                     <span className="w-2 h-6 bg-slate-800"></span> Atividades desenvolvidas / Avaliação:
@@ -544,9 +600,6 @@ const App: React.FC = () => {
                     value={plan.evaluation}
                     onChange={e => updatePlanField('evaluation', e.target.value)}
                   />
-                  <p className="mt-4 text-[11px] text-slate-500 italic">
-                    *O desempenho do aluno será avaliado através do seu desempenho nas atividades realizadas e também na participação em aula, interesse e engajamento do aluno.
-                  </p>
                 </div>
               </div>
 
@@ -724,13 +777,39 @@ const App: React.FC = () => {
                   <p className="mt-12 text-slate-400 font-medium">Professor: {teacherName}</p>
                </div>
                {proLesson.slides.map((slide, idx) => (
-                 <div key={idx} className="bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[500px] break-inside-avoid border border-slate-100">
+                 <div key={idx} className="bg-white rounded-[3rem] shadow-2xl overflow-hidden flex flex-col md:flex-row min-h-[600px] break-inside-avoid border border-slate-100">
                     <div className="flex-1 p-12 flex flex-col justify-center space-y-8">
                        <h2 className="text-3xl font-black text-slate-800 leading-tight border-l-8 border-blue-500 pl-6">{slide.title}</h2>
                        <ul className="space-y-4">{slide.topics.map((t, i) => <li key={i} className="text-slate-600 font-bold text-lg flex gap-4"><span className="text-blue-500 text-2xl">▸</span> {t}</li>)}</ul>
+                       
+                       {/* Aprofundamento Visual Garantido */}
+                       <div className="mt-6 p-8 bg-blue-50/50 rounded-[2.5rem] border-2 border-blue-200 shadow-inner">
+                          <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-4">Aprofundamento para o Professor:</p>
+                          <p className="text-slate-700 text-base font-medium leading-relaxed italic whitespace-pre-line">
+                            {slide.detailedContent || "Conteúdo teórico em processamento..."}
+                          </p>
+                       </div>
+
+                       <div className="flex items-center gap-4 p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                          <span className="text-2xl">🌍</span>
+                          <p className="text-sm font-black text-emerald-800 italic">{slide.realityBridge}</p>
+                       </div>
                     </div>
+                    
+                    {/* Imagem com Estado de Carregamento */}
                     <div className="flex-1 bg-slate-50 flex items-center justify-center p-8">
-                       {slide.imageUrl && <img src={slide.imageUrl} className="max-w-full rounded-[2.5rem] shadow-2xl border-4 border-white" alt={slide.altText} />}
+                       {slide.imageUrl ? (
+                         <img src={slide.imageUrl} className="max-w-full rounded-[2.5rem] shadow-2xl border-4 border-white transition-all duration-500" alt={slide.altText} />
+                       ) : (
+                         <div className="w-full aspect-square bg-slate-100 animate-pulse rounded-[2.5rem] flex flex-col items-center justify-center border-4 border-dashed border-slate-200">
+                           <div className="w-16 h-16 text-slate-300 mb-4">
+                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                             </svg>
+                           </div>
+                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Gerando Ilustração...</p>
+                         </div>
+                       )}
                     </div>
                  </div>
                ))}

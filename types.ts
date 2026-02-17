@@ -38,6 +38,7 @@ export interface AdaptedLesson {
 export interface Slide {
   title: string;
   topics: string[];
+  detailedContent: string; // Novo campo para explicações pedagógicas
   realityBridge: string;
   imagePrompt: string;
   imageUrl?: string;
@@ -125,17 +126,26 @@ export type Discipline =
   | 'Arte' 
   | 'Ensino Religioso'
   | 'Língua Inglesa'
-  | 'Biologia'
-  | 'Física'
-  | 'Química'
-  | 'Sociologia'
+  | 'Biologia' 
+  | 'Física' 
+  | 'Química' 
+  | 'Sociologia' 
   | 'Filosofia';
 
 export type Grade = 
   | 'Educação Infantil'
-  | '1º ao 5º ano (Fundamental - Iniciais)'
-  | '6º ao 9º ano (Fundamental - Finais)'
-  | 'Ensino Médio';
+  | '1º ano (Fundamental I)'
+  | '2º ano (Fundamental I)'
+  | '3º ano (Fundamental I)'
+  | '4º ano (Fundamental I)'
+  | '5º ano (Fundamental I)'
+  | '6º ano (Fundamental II)'
+  | '7º ano (Fundamental II)'
+  | '8º ano (Fundamental II)'
+  | '9º ano (Fundamental II)'
+  | '1ª série (Ensino Médio)'
+  | '2ª série (Ensino Médio)'
+  | '3ª série (Ensino Médio)';
 
 export type ExerciseDifficulty = 'Fácil' | 'Médio' | 'Desafiador';
 

@@ -122,7 +122,19 @@ export const generateProfessionalLesson = async (
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Transforme o conteúdo em SLIDES PROFISSIONAIS: "${content}".`,
+    contents: `Você é um designer instrucional sênior. Transforme o conteúdo abaixo em SLIDES PROFISSIONAIS para uma aula.
+    
+    CONTEÚDO: "${content}"
+    DISCIPLINA: ${discipline}
+    SÉRIE: ${grade}
+
+    REQUISITOS FUNDAMENTAIS (NÃO IGNORE):
+    1. Para cada slide, você DEVE gerar o campo "detailedContent".
+    2. O "detailedContent" DEVE ser um texto explicativo longo (mínimo de 150 palavras por slide) que serve como base teórica completa para o professor. 
+    3. Use linguagem acadêmica porém acessível no detailedContent, citando conceitos e explicando o "porquê" de cada tópico.
+    4. O "realityBridge" deve conectar o tema à vida cotidiana do aluno.
+
+    Retorne em JSON conforme o schema.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -137,15 +149,18 @@ export const generateProfessionalLesson = async (
               properties: {
                 title: { type: Type.STRING },
                 topics: { type: Type.ARRAY, items: { type: Type.STRING } },
+                detailedContent: { type: Type.STRING, description: "Explicação teórica densa para o professor." },
                 realityBridge: { type: Type.STRING },
                 imagePrompt: { type: Type.STRING },
                 altText: { type: Type.STRING }
-              }
+              },
+              required: ["title", "topics", "detailedContent", "realityBridge", "imagePrompt"]
             }
           },
           applicationChallenge: {
             type: Type.OBJECT,
-            properties: { scenario: { type: Type.STRING }, problem: { type: Type.STRING }, goal: { type: Type.STRING } }
+            properties: { scenario: { type: Type.STRING }, problem: { type: Type.STRING }, goal: { type: Type.STRING } },
+            required: ["scenario", "problem", "goal"]
           },
           quizizzData: {
             type: Type.ARRAY,
@@ -250,13 +265,15 @@ export const generateLessonImage = async (prompt: string): Promise<string> => {
   if (!prompt) return "";
   try {
     const ai = getAI();
+    // Use gemini-2.5-flash-image for more consistent educational illustrations
     const response = await ai.models.generateContent({
-      model: 'gemini-3-pro-image-preview',
-      contents: { parts: [{ text: `Educational drawing, high contrast, clean white background, pedagogical style, no text: ${prompt}` }] },
+      model: 'gemini-2.5-flash-image',
+      contents: { parts: [{ text: `Educational illustration for school, clear colors, white background, no text, style: vector art for education. Prompt: ${prompt}` }] },
       config: { 
-        imageConfig: { aspectRatio: "1:1", imageSize: "1K" } 
+        imageConfig: { aspectRatio: "1:1" } 
       }
     });
+    
     const candidate = response.candidates?.[0];
     if (candidate?.content?.parts) {
       for (const part of candidate.content.parts) {
@@ -264,7 +281,10 @@ export const generateLessonImage = async (prompt: string): Promise<string> => {
       }
     }
     return "";
-  } catch (err: any) { return ""; }
+  } catch (err: any) { 
+    console.error("Erro na geração de imagem:", err);
+    return ""; 
+  }
 };
 
 export const generateLessonPlan = async (
