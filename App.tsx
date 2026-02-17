@@ -54,7 +54,6 @@ const App: React.FC = () => {
     '3ª série (Ensino Médio)'
   ];
 
-  // Apenas bloqueia o botão principal se o status não for idle/ready/error e NÃO for busca de BNCC
   const isLoading = status !== 'idle' && status !== 'ready' && status !== 'error' && status !== 'searching-bncc';
   const isSearchingBNCC = status === 'searching-bncc';
 
@@ -192,9 +191,9 @@ const App: React.FC = () => {
       <main className="max-w-4xl mx-auto px-4 py-8">
         
         <div className="flex justify-center gap-2 mb-10 no-print flex-wrap">
-          <button onClick={() => { setAppMode('adaptation'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'adaptation' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Adaptação DI</button>
-          <button onClick={() => { setAppMode('planning'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'planning' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Plano BNCC</button>
-          <button onClick={() => { setAppMode('slides'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'slides' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Criar Slides</button>
+          <button onClick={() => { setAppMode('adaptation'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'adaptation' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Aula Adaptada</button>
+          <button onClick={() => { setAppMode('planning'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'planning' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Plano de Aula</button>
+          <button onClick={() => { setAppMode('slides'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'slides' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Criar Aulas</button>
           <button onClick={() => { setAppMode('exercises'); reset(); }} className={`px-6 py-3 rounded-2xl font-bold transition-all text-sm shadow-sm ${appMode === 'exercises' ? 'bg-blue-600 text-white' : 'bg-white text-blue-400 border border-blue-50'}`}>Criar Exercícios</button>
         </div>
 
