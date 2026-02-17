@@ -6,6 +6,11 @@ export interface LessonSection {
   imageUrl?: string;
   isColoringPage?: boolean;
   type: 'explanation' | 'activity' | 'practical';
+  supports?: {
+    level1: string; // A Pista
+    level2: string; // O Caminho
+    level3: string; // A Ponte
+  };
 }
 
 export interface AdaptedLesson {
@@ -89,6 +94,7 @@ export interface LessonPlan {
   discipline: string;
   grade: string;
   lessonCount: string;
+  bimester: string;
   bimesterLessonCount: string;
   period: string;
   startDate: string;
@@ -128,13 +134,10 @@ export type Discipline =
 export type Grade = 
   | 'Educação Infantil'
   | '1º ao 5º ano (Fundamental - Iniciais)'
-  | '6º ano (Fundamental - Finais)'
-  | '7º ano (Fundamental - Finais)'
-  | '8º ano (Fundamental - Finais)'
-  | '9º ano (Fundamental - Finais)'
-  | '1ª série (Ensino Médio)'
-  | '2ª série (Ensino Médio)'
-  | '3ª série (Ensino Médio)';
+  | '6º ao 9º ano (Fundamental - Finais)'
+  | 'Ensino Médio';
+
+export type ExerciseDifficulty = 'Fácil' | 'Médio' | 'Desafiador';
 
 export type AppStatus = 'idle' | 'adapting' | 'designing' | 'generating-images' | 'ready' | 'error' | 'planning' | 'searching-bncc' | 'generating-exercises';
 export type AppMode = 'adaptation' | 'planning' | 'slides' | 'exercises';

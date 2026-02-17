@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { AdaptedLesson, Discipline, Grade, LessonPlan, BNCCSearchResult, ProfessionalLesson, ExerciseSheet } from "../types";
+import { AdaptedLesson, Discipline, Grade, LessonPlan, BNCCSearchResult, ProfessionalLesson, ExerciseSheet, ExerciseDifficulty } from "../types";
 
 // Função para obter a instância do AI usando a chave mais atual do contexto
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -35,45 +35,47 @@ export const generateExercises = async (
   grade: string,
   count: number,
   types: string[],
-  adapted: boolean = false
+  adapted: boolean = false,
+  difficulty: ExerciseDifficulty = 'Médio'
 ): Promise<ExerciseSheet> => {
   const ai = getAI();
   
   const typeRequirements = types.map(t => {
-    if (t === 'multiple_choice') return "Múltipla Escolha (com exatamente 4 opções no campo 'options')";
+    if (t === 'multiple_choice') return "Múltipla Escolha (com exatamente 4 opções)";
     if (t === 'open') return "Dissertativa (pergunta aberta)";
     if (t === 'true_false') return "Verdadeiro ou Falso";
     return t;
   }).join(', ');
 
   const inclusionRules = adapted ? `
-    REGRAS DE INCLUSÃO (OBRIGATÓRIO):
-    1. LINGUAGEM: Use "Linguagem Simples" (frases curtas, diretas, sem abstrações).
-    2. NÍVEIS DE SUPORTE (Deve preencher o objeto 'supports'):
-       - level1 (Suporte Nível 1 - LEVE): Apenas um gatilho mental ou dica visual (ex: "Lembre da cor do sol").
-       - level2 (Suporte Nível 2 - MÉDIO): Guia de processo. Mostre o caminho/lógica, mas não a resposta (ex: "Primeiro você soma, depois subtrai").
-       - level3 (Suporte Nível 3 - INTENSO): Explicação objetiva e um exemplo resolvido similar.
+    REGRAS DE INCLUSÃO (ALUNO DI):
+    1. LINGUAGEM: Use "Linguagem Simples" (frases curtas, diretas, literais).
+    2. NÍVEIS DE SUPORTE (OBRIGATÓRIO):
+       - level1 (A Pista): Dica visual ou gatilho mental sutil.
+       - level2 (O Caminho): Guia do processo lógico para resolver, sem dar a resposta.
+       - level3 (A Ponte): Explicação profunda, analogia e exemplo similar resolvido.
   ` : `
     REGRAS PADRÃO:
-    1. LINGUAGEM: Use linguagem adequada para a série ${grade}.
-    2. SUPORTE: NÃO gere o objeto 'supports'. Deixe-o nulo ou vazio.
+    1. LINGUAGEM: Adequada para a série ${grade} e nível ${difficulty}.
+    2. SUPORTE: Não gere o objeto 'supports'.
   `;
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Crie uma lista com ${count} exercícios sobre o conteúdo: "${content}"
-    
-    Componente Curricular: ${discipline}
-    Série/Etapa: ${grade}
-    Tipos permitidos: [${typeRequirements}]
+    contents: `Você é um especialista em avaliação pedagógica. Crie ${count} exercícios baseados no conteúdo abaixo.
 
+    CONTEÚDO BASE: "${content}"
+
+    REGRAS DE FORMULAÇÃO DE PERGUNTAS (CRÍTICO):
+    - NÃO utilize frases genéricas como "De acordo com o texto", "Segundo o texto" ou "Com base no texto" se você estiver perguntando diretamente sobre o conceito.
+    - SÓ utilize citações ao texto se você criar um pequeno parágrafo/texto de apoio dentro do enunciado da própria questão. Caso contrário, não cite "texto".
+    - Foque o enunciado diretamente na situação-problema ou no conceito teórico de forma clara e objetiva.
+
+    Componente: ${discipline} | Série: ${grade}
     ${inclusionRules}
+    Tipos: [${typeRequirements}]
 
-    IMPORTANTE: 
-    - Se o tipo for 'multiple_choice', o array 'options' deve ter obrigatoriamente 4 itens.
-    - O campo 'answerKey' deve conter a resposta correta de forma clara.
-    - O campo 'explanation' deve conter uma breve justificativa pedagógica da resposta.
-    Retorne estritamente JSON.`,
+    Retorne em JSON.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -109,21 +111,7 @@ export const generateExercises = async (
   });
 
   if (!response.text) throw new Error("Falha ao gerar exercícios.");
-  const data = JSON.parse(response.text);
-  
-  data.questions = data.questions
-    .filter((q: any) => types.includes(q.type))
-    .map((q: any) => {
-      if (q.type === 'multiple_choice' && (!q.options || q.options.length < 4)) {
-        q.options = ["Opção 1", "Opção 2", "Opção 3", "Opção 4"];
-      }
-      if (!adapted) {
-        delete q.supports;
-      }
-      return q;
-    });
-
-  return data;
+  return JSON.parse(response.text);
 };
 
 export const generateProfessionalLesson = async (
@@ -134,18 +122,7 @@ export const generateProfessionalLesson = async (
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Você é um Designer Instrucional de elite. Transforme o conteúdo abaixo em um conjunto de SLIDES PROFISSIONAIS IMPACTANTES.
-    
-    CONTEÚDO: "${content}". 
-    Componente Curricular: ${discipline}, Etapa: ${grade}. 
-    
-    REGRAS:
-    1. Crie títulos chamativos e tópicos curtos (máximo 4 por slide).
-    2. Crie um 'imagePrompt' ALTAMENTE DESCRITIVO E VISUAL para cada slide. 
-       Exemplo bom: "Ilustração 3D detalhada de uma célula animal colorida, estilo laboratório moderno, luz volumétrica, 4k, sem texto".
-       Evite: "uma imagem de célula".
-    3. Use Português Brasileiro impecável.
-    4. NÃO inclua texto dentro dos imagePrompts.`,
+    contents: `Transforme o conteúdo em SLIDES PROFISSIONAIS: "${content}".`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -172,15 +149,7 @@ export const generateProfessionalLesson = async (
           },
           quizizzData: {
             type: Type.ARRAY,
-            items: { 
-              type: Type.OBJECT, 
-              properties: { 
-                question: { type: Type.STRING }, 
-                options: { type: Type.ARRAY, items: { type: Type.STRING } }, 
-                answer: { type: Type.STRING }, 
-                explanation: { type: Type.STRING } 
-              } 
-            }
+            items: { type: Type.OBJECT, properties: { question: { type: Type.STRING }, options: { type: Type.ARRAY, items: { type: Type.STRING } }, answer: { type: Type.STRING }, explanation: { type: Type.STRING } } }
           },
           suggestedVideos: {
             type: Type.ARRAY,
@@ -191,8 +160,6 @@ export const generateProfessionalLesson = async (
       }
     }
   });
-
-  if (!response.text) throw new Error("Falha ao gerar slides.");
   return JSON.parse(response.text);
 };
 
@@ -207,8 +174,19 @@ export const adaptLessonContent = async (
   const ai = getAI();
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Adapte pedagogicamente para aluno com DI: "${originalContent}". 
-    Linguagem simples (Easy-to-read), lúdica e image prompts visuais.`,
+    contents: `Adapte pedagogicamente para aluno com Deficiência Intelectual (DI): "${originalContent}". 
+    
+    REGRAS DE OURO:
+    1. FORMATO: NÃO CRIE SLIDES. Crie um material de leitura e atividades em formato de documento.
+    2. LINGUAGEM: Simples, direta, literal, frases curtas.
+    3. NÍVEIS DE SUPORTE (OBRIGATÓRIO PARA CADA SEÇÃO):
+       - level1 (Nível 1 - A Pista): Dica visual/gatilho mental sutil.
+       - level2 (Nível 2 - O Caminho): Guia passo a passo da lógica, sem dar a resposta.
+       - level3 (Nível 3 - A Ponte): Explicação profunda, analogia concreta e exemplo resolvido similar.
+    4. ATIVIDADES PRÁTICAS: Crie pelo menos 2 experiências concretas (campo 'practicalActivities').
+    5. ATIVIDADE PARA CASA: Crie 1 missão lúdica para família (campo 'familyActivity').
+
+    Retorne estritamente JSON conforme o schema.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -225,8 +203,17 @@ export const adaptLessonContent = async (
                 title: { type: Type.STRING }, 
                 content: { type: Type.STRING }, 
                 imagePrompt: { type: Type.STRING }, 
-                type: { type: Type.STRING, enum: ['explanation', 'activity'] } 
-              } 
+                type: { type: Type.STRING, enum: ['explanation', 'activity'] },
+                supports: {
+                  type: Type.OBJECT,
+                  properties: {
+                    level1: { type: Type.STRING },
+                    level2: { type: Type.STRING },
+                    level3: { type: Type.STRING }
+                  }
+                }
+              },
+              required: ["title", "content", "imagePrompt", "type", "supports"]
             } 
           },
           practicalActivities: { 
@@ -237,10 +224,19 @@ export const adaptLessonContent = async (
                 title: { type: Type.STRING }, 
                 description: { type: Type.STRING }, 
                 materials: { type: Type.ARRAY, items: { type: Type.STRING } } 
-              } 
+              },
+              required: ["title", "description", "materials"]
             } 
           },
-          familyActivity: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, description: { type: Type.STRING }, instruction: { type: Type.STRING } } }
+          familyActivity: { 
+            type: Type.OBJECT, 
+            properties: { 
+              title: { type: Type.STRING }, 
+              description: { type: Type.STRING }, 
+              instruction: { type: Type.STRING } 
+            },
+            required: ["title", "description", "instruction"]
+          }
         },
         required: ["originalTitle", "adaptedTitle", "summary", "sections", "practicalActivities", "familyActivity"]
       }
@@ -254,61 +250,38 @@ export const generateLessonImage = async (prompt: string): Promise<string> => {
   if (!prompt) return "";
   try {
     const ai = getAI();
-    // Upgrade para Gemini 3 Pro Image (Alta Qualidade 1K)
     const response = await ai.models.generateContent({
       model: 'gemini-3-pro-image-preview',
-      contents: { parts: [{ text: `High-quality educational illustration, vibrant colors, clear shapes, 4k resolution, pedagogical style, no text: ${prompt}` }] },
+      contents: { parts: [{ text: `Educational drawing, high contrast, clean white background, pedagogical style, no text: ${prompt}` }] },
       config: { 
-        imageConfig: { 
-          aspectRatio: "1:1",
-          imageSize: "1K"
-        } 
+        imageConfig: { aspectRatio: "1:1", imageSize: "1K" } 
       }
     });
-    
     const candidate = response.candidates?.[0];
     if (candidate?.content?.parts) {
       for (const part of candidate.content.parts) {
-        if (part.inlineData?.data) {
-          return `data:image/png;base64,${part.inlineData.data}`;
-        }
+        if (part.inlineData?.data) return `data:image/png;base64,${part.inlineData.data}`;
       }
     }
     return "";
-  } catch (err: any) { 
-    console.error("Erro na geração de imagem:", err);
-    // Propaga erro de entidade não encontrada para avisar que a chave expirou ou é inválida
-    if (err.message?.includes("not found")) throw err;
-    return ""; 
-  }
+  } catch (err: any) { return ""; }
 };
 
 export const generateLessonPlan = async (
-  teacherName: string, 
-  school: string, 
-  discipline: Discipline, 
-  grade: Grade, 
-  lessonCount: string, 
-  bimesterLessonCount: string,
-  period: string, 
-  startDate: string,
-  endDate: string,
-  bnccSkills: string[], 
-  bnccDescriptions: string[]
+  teacherName: string, school: string, discipline: Discipline, grade: Grade, lessonCount: string, bimester: string, bimesterLessonCount: string,
+  startDate: string, endDate: string, bnccSkills: string[], bnccDescriptions: string[]
 ): Promise<LessonPlan> => {
   const ai = getAI();
-  const skillsContext = bnccSkills.map((code, i) => `${code}: ${bnccDescriptions[i]}`).join('\n');
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Gere um Plano de Aula BNCC completo e detalhado: ${discipline} para ${grade}. 
-    Habilidades BNCC: ${skillsContext}. 
-    Número de aulas previstas para este plano: ${lessonCount}.
+    contents: `Gere um Plano de Aula estruturado para ${discipline} (${grade}). 
+    Escola: ${school}. Professor: ${teacherName}. 
+    Bimestre: ${bimester}. Período: de ${startDate} a ${endDate}.
+    Habilidades BNCC selecionadas: ${bnccSkills.join(', ')} (${bnccDescriptions.join('; ')}).
+
+    Retorne em JSON com os campos: title, objectives (array de strings), methodology (string), resources (array de strings), evaluation (string), activities (string).
     
-    O plano deve ser pedagógico e contemplar:
-    - Metodologia: Orientação passo a passo da aula.
-    - Atividades: Descrição das atividades que os alunos irão desenvolver.
-    - Recursos: Materiais necessários.
-    - Avaliação: Como o aluno será avaliado.`,
+    Importante: A metodologia deve ser detalhada e as atividades devem ser coerentes com as habilidades.`,
     config: {
       responseMimeType: "application/json",
       responseSchema: {
@@ -325,10 +298,19 @@ export const generateLessonPlan = async (
       }
     }
   });
-  if (!response.text) throw new Error("Falha ao gerar plano.");
   return { 
     ...JSON.parse(response.text), 
-    school, teacherName, discipline, grade, lessonCount, bimesterLessonCount, period, startDate, endDate, bnccSkills, 
-    bnccDescriptions: bnccDescriptions.map(d => d || "Descrição não disponível.") 
+    school, 
+    teacherName, 
+    discipline, 
+    grade, 
+    lessonCount, 
+    bimester,
+    bimesterLessonCount, 
+    period: `de ${startDate} a ${endDate}`, 
+    startDate, 
+    endDate, 
+    bnccSkills, 
+    bnccDescriptions 
   };
 };
