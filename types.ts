@@ -5,7 +5,7 @@ export interface LessonSection {
   imagePrompt: string;
   imageUrl?: string;
   isColoringPage?: boolean;
-  type: 'explanation' | 'activity';
+  type: 'explanation' | 'activity' | 'practical';
 }
 
 export interface AdaptedLesson {
@@ -18,11 +18,11 @@ export interface AdaptedLesson {
   grade: string;
   summary: string;
   sections: LessonSection[];
-  coloringChallenge: {
+  practicalActivities: {
+    title: string;
     description: string;
-    prompt: string;
-    imageUrl?: string;
-  };
+    materials: string[];
+  }[];
   familyActivity: {
     title: string;
     description: string;
@@ -30,20 +30,111 @@ export interface AdaptedLesson {
   };
 }
 
+export interface Slide {
+  title: string;
+  topics: string[];
+  realityBridge: string;
+  imagePrompt: string;
+  imageUrl?: string;
+  altText: string;
+}
+
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  answer: string;
+  explanation: string;
+}
+
+export interface VideoResource {
+  title: string;
+  description: string;
+  promptForGeneration: string;
+}
+
+export interface ProfessionalLesson {
+  title: string;
+  targetAudience: string;
+  slides: Slide[];
+  applicationChallenge: {
+    scenario: string;
+    problem: string;
+    goal: string;
+  };
+  suggestedVideos: VideoResource[];
+  quizizzData: QuizQuestion[];
+}
+
+export interface ExerciseQuestion {
+  type: 'multiple_choice' | 'open' | 'true_false';
+  statement: string;
+  options?: string[];
+  answerKey: string;
+  explanation?: string;
+  supports?: {
+    level1: string; // A Pista
+    level2: string; // O Caminho
+    level3: string; // A Ponte
+  };
+}
+
+export interface ExerciseSheet {
+  title: string;
+  questions: ExerciseQuestion[];
+}
+
+export interface LessonPlan {
+  school: string;
+  teacherName: string;
+  discipline: string;
+  grade: string;
+  lessonCount: string;
+  bimesterLessonCount: string;
+  period: string;
+  startDate: string;
+  endDate: string;
+  bnccSkills: string[];
+  bnccDescriptions: string[];
+  title: string;
+  objectives: string[];
+  methodology: string;
+  activities: string;
+  resources: string[];
+  evaluation: string;
+}
+
+export interface BNCCSearchResult {
+  code: string;
+  description: string;
+  sources: { uri: string; title: string }[];
+}
+
 export type Discipline = 
-  | 'Arte' 
-  | 'Ciência' 
   | 'Língua Portuguesa' 
-  | 'Sociologia' 
-  | 'Filosofia' 
-  | 'História' 
+  | 'Matemática' 
+  | 'Ciências' 
   | 'Geografia' 
-  | 'Matemática'
-  | 'Inglês'
-  | 'Química'
+  | 'História' 
+  | 'Educação Física' 
+  | 'Arte' 
+  | 'Ensino Religioso'
+  | 'Língua Inglesa'
   | 'Biologia'
   | 'Física'
-  | 'Espanhol';
+  | 'Química'
+  | 'Sociologia'
+  | 'Filosofia';
 
-export type Grade = '6º EF' | '7º EF' | '8º EF' | '9º EF' | '1º EM' | '2º EM' | '3º EM';
-export type AppStatus = 'idle' | 'adapting' | 'generating-images' | 'ready' | 'error';
+export type Grade = 
+  | 'Educação Infantil'
+  | '1º ao 5º ano (Fundamental - Iniciais)'
+  | '6º ano (Fundamental - Finais)'
+  | '7º ano (Fundamental - Finais)'
+  | '8º ano (Fundamental - Finais)'
+  | '9º ano (Fundamental - Finais)'
+  | '1ª série (Ensino Médio)'
+  | '2ª série (Ensino Médio)'
+  | '3ª série (Ensino Médio)';
+
+export type AppStatus = 'idle' | 'adapting' | 'designing' | 'generating-images' | 'ready' | 'error' | 'planning' | 'searching-bncc' | 'generating-exercises';
+export type AppMode = 'adaptation' | 'planning' | 'slides' | 'exercises';
