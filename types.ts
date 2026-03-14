@@ -149,5 +149,29 @@ export type Grade =
 
 export type ExerciseDifficulty = 'Fácil' | 'Médio' | 'Desafiador';
 
-export type AppStatus = 'idle' | 'adapting' | 'designing' | 'generating-images' | 'ready' | 'error' | 'planning' | 'searching-bncc' | 'generating-exercises';
-export type AppMode = 'adaptation' | 'planning' | 'slides' | 'exercises';
+export interface PEIPlan extends LessonPlan {
+  studentName: string;
+  studentDiagnosis: string;
+  currentSkills: string;
+  studentInterests: string;
+  supportLevel: 1 | 2 | 3;
+  shortTermGoals: string[];
+  mediumTermGoals: string[];
+  pedagogicalStrategies: string;
+}
+
+export interface MindMap {
+  title: string;
+  centralTopic: string;
+  nodes: { id: string; label: string; parentId: string | null }[];
+  imageUrl?: string;
+}
+
+export interface WordSearch {
+  title: string;
+  grid: string[][];
+  words: string[];
+}
+
+export type AppStatus = 'idle' | 'adapting' | 'designing' | 'generating-images' | 'ready' | 'error' | 'planning' | 'searching-bncc' | 'generating-exercises' | 'generating-pei' | 'generating-mindmap' | 'generating-wordsearch';
+export type AppMode = 'adaptation' | 'planning' | 'slides' | 'exercises' | 'pei' | 'mindmap' | 'wordsearch';

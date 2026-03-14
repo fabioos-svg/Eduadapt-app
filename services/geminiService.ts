@@ -1,9 +1,9 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { AdaptedLesson, Discipline, Grade, LessonPlan, BNCCSearchResult, ProfessionalLesson, ExerciseSheet, ExerciseDifficulty } from "../types";
+import { AdaptedLesson, Discipline, Grade, LessonPlan, BNCCSearchResult, ProfessionalLesson, ExerciseSheet, ExerciseDifficulty, PEIPlan, MindMap, WordSearch } from "../types";
 
 // Função para obter a instância do AI usando a chave mais atual do contexto
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+const getAI = () => new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 export const searchBNCCSkill = async (query: string): Promise<BNCCSearchResult> => {
   const ai = getAI();
@@ -33,20 +33,12 @@ export const generateExercises = async (
   content: string,
   discipline: string,
   grade: string,
-  count: number,
-  types: string[],
+  counts: { multiple_choice: number; open: number; true_false: number },
   adapted: boolean = false,
   difficulty: ExerciseDifficulty = 'Médio'
 ): Promise<ExerciseSheet> => {
   const ai = getAI();
   
-  const typeRequirements = types.map(t => {
-    if (t === 'multiple_choice') return "Múltipla Escolha (com exatamente 4 opções)";
-    if (t === 'open') return "Dissertativa (pergunta aberta)";
-    if (t === 'true_false') return "Verdadeiro ou Falso";
-    return t;
-  }).join(', ');
-
   const inclusionRules = adapted ? `
     REGRAS DE INCLUSÃO (ALUNO DI):
     1. LINGUAGEM: Use "Linguagem Simples" (frases curtas, diretas, literais).
@@ -62,7 +54,12 @@ export const generateExercises = async (
 
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
-    contents: `Você é um especialista em avaliação pedagógica. Crie ${count} exercícios baseados no conteúdo abaixo.
+    contents: `Você é um especialista em avaliação pedagógica. Crie exercícios baseados no conteúdo abaixo.
+    
+    QUANTIDADES SOLICITADAS:
+    - Múltipla Escolha: ${counts.multiple_choice}
+    - Dissertativas: ${counts.open}
+    - Verdadeiro ou Falso: ${counts.true_false}
 
     CONTEÚDO BASE: "${content}"
 
@@ -73,7 +70,6 @@ export const generateExercises = async (
 
     Componente: ${discipline} | Série: ${grade}
     ${inclusionRules}
-    Tipos: [${typeRequirements}]
 
     Retorne em JSON.`,
     config: {
@@ -111,6 +107,134 @@ export const generateExercises = async (
   });
 
   if (!response.text) throw new Error("Falha ao gerar exercícios.");
+  return JSON.parse(response.text);
+};
+
+export const generateMindMap = async (content: string, theme: string): Promise<MindMap> => {
+  const ai = getAI();
+  
+  // 1. Gerar Metadados e Estrutura (Título e Tópico Central)
+  const metaResponse = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Crie um mapa mental sobre o tema "${theme}" baseado no conteúdo: "${content}".
+    Retorne um JSON com o título, o tópico central e uma lista de nós (nodes).
+    Cada nó deve ter um id único, um label curto e o parentId do nó pai (o tópico central tem parentId null).
+    
+    IMPORTANTE: Use estritamente Português Brasileiro com rigor gramatical absoluto. Revise a ortografia de todas as palavras.`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          centralTopic: { type: Type.STRING },
+          nodes: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                id: { type: Type.STRING },
+                label: { type: Type.STRING },
+                parentId: { type: Type.STRING, nullable: true }
+              },
+              required: ["id", "label"]
+            }
+          }
+        },
+        required: ["title", "centralTopic", "nodes"]
+      }
+    }
+  });
+  
+  const data = JSON.parse(metaResponse.text);
+
+  // 2. Gerar a Imagem do Mapa Mental (Nano Banana)
+  try {
+    const imageResponse = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: { 
+        parts: [{ 
+          text: `Professional educational mind map about "${theme}". Central topic: "${data.centralTopic}". 
+          Style: Clean, professional, colorful bubbles, clear connecting lines, white background, high quality vector art for education. 
+          The mind map should be visually appealing and easy to read.` 
+        }] 
+      },
+      config: { 
+        imageConfig: { aspectRatio: "1:1" } 
+      }
+    });
+
+    const candidate = imageResponse.candidates?.[0];
+    if (candidate?.content?.parts) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData?.data) {
+          data.imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+          break;
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Erro ao gerar imagem do mapa mental:", err);
+  }
+
+  return data;
+};
+
+export const regenerateMindMapImage = async (mindMap: MindMap): Promise<string> => {
+  const ai = getAI();
+  try {
+    const imageResponse = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-image-preview',
+      contents: { 
+        parts: [{ 
+          text: `Professional educational mind map about "${mindMap.title}". Central topic: "${mindMap.centralTopic}". 
+          Key topics to include: ${mindMap.nodes.map(n => n.label).join(', ')}.
+          Style: Clean, professional, colorful bubbles, clear connecting lines, white background, high quality vector art for education. 
+          The mind map should be visually appealing and easy to read. Ensure the text labels are legible.` 
+        }] 
+      },
+      config: { 
+        imageConfig: { aspectRatio: "1:1", imageSize: "1K" } 
+      }
+    });
+
+    const candidate = imageResponse.candidates?.[0];
+    if (candidate?.content?.parts) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData?.data) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
+      }
+    }
+    throw new Error("Nenhuma imagem gerada na resposta.");
+  } catch (err) {
+    console.error("Erro ao regenerar imagem do mapa mental:", err);
+    throw err; // Re-throw to be caught by App.tsx
+  }
+};
+
+export const generateWordSearch = async (content: string, theme: string): Promise<WordSearch> => {
+  const ai = getAI();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Crie um caça-palavras sobre "${theme}" baseado no conteúdo: "${content}".
+    Selecione 10 palavras-chave importantes.
+    Gere uma grade (grid) de 12x12 caracteres.
+    As palavras devem ser posicionadas em diversas direções: horizontal, vertical, diagonais e também de forma invertida (de trás para frente).
+    Retorne um JSON com o título, a grade (array de arrays de strings) e a lista de palavras.`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          grid: { type: Type.ARRAY, items: { type: Type.ARRAY, items: { type: Type.STRING } } },
+          words: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ["title", "grid", "words"]
+      }
+    }
+  });
   return JSON.parse(response.text);
 };
 
@@ -287,9 +411,106 @@ export const generateLessonImage = async (prompt: string): Promise<string> => {
   }
 };
 
+export const generatePEIPlan = async (
+  teacherName: string, 
+  school: string, 
+  discipline: Discipline, 
+  grade: Grade, 
+  lessonCount: string, 
+  bimester: string, 
+  bimesterLessonCount: string,
+  startDate: string, 
+  endDate: string, 
+  bnccSkills: string[], 
+  bnccDescriptions: string[],
+  studentName: string,
+  studentDiagnosis: string,
+  currentSkills: string,
+  studentInterests: string,
+  supportLevel: number
+): Promise<PEIPlan> => {
+  const ai = getAI();
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: `Gere um Plano Educacional Individualizado (PEI) para o aluno ${studentName} na disciplina de ${discipline} (${grade}).
+    
+    PERFIL DO ALUNO:
+    - Diagnóstico: ${studentDiagnosis}
+    - Habilidades Atuais: ${currentSkills}
+    - Interesses: ${studentInterests}
+    - Nível de Suporte Necessário: Nível ${supportLevel} (1: Pista, 2: Caminho, 3: Ponte)
+
+    DADOS DO PLANO:
+    - Escola: ${school}. Professor: ${teacherName}. 
+    - Bimestre: ${bimester}. Período: de ${startDate} a ${endDate}.
+    - Habilidades BNCC base: ${bnccSkills.join(', ')} (${bnccDescriptions.join('; ')}).
+
+    O PEI deve personalizar o ensino focando nas habilidades reais do aluno, seguindo as regras de aprendizado por níveis de suporte.
+
+    Retorne em JSON com os campos: 
+    title, 
+    objectives (array de strings - objetivos gerais da turma),
+    shortTermGoals (array de strings - metas realistas e funcionais para o aluno),
+    mediumTermGoals (array de strings - metas para o bimestre),
+    pedagogicalStrategies (string - estratégias de concretude, simplificação, apoio visual e tempo flexível),
+    methodology (string - orientações pedagógicas específicas),
+    resources (array de strings),
+    activities (string - exemplos de atividades práticas lúdicas),
+    evaluation (string - monitoramento contínuo e formativo).`,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          title: { type: Type.STRING },
+          objectives: { type: Type.ARRAY, items: { type: Type.STRING } },
+          shortTermGoals: { type: Type.ARRAY, items: { type: Type.STRING } },
+          mediumTermGoals: { type: Type.ARRAY, items: { type: Type.STRING } },
+          pedagogicalStrategies: { type: Type.STRING },
+          methodology: { type: Type.STRING },
+          activities: { type: Type.STRING },
+          resources: { type: Type.ARRAY, items: { type: Type.STRING } },
+          evaluation: { type: Type.STRING }
+        },
+        required: ["title", "objectives", "shortTermGoals", "mediumTermGoals", "pedagogicalStrategies", "methodology", "activities", "resources", "evaluation"]
+      }
+    }
+  });
+  
+  const data = JSON.parse(response.text);
+  return { 
+    ...data, 
+    school, 
+    teacherName, 
+    discipline, 
+    grade, 
+    lessonCount, 
+    bimester,
+    bimesterLessonCount, 
+    period: `de ${startDate} a ${endDate}`, 
+    startDate, 
+    endDate, 
+    bnccSkills, 
+    bnccDescriptions,
+    studentName,
+    studentDiagnosis,
+    currentSkills,
+    studentInterests,
+    supportLevel: supportLevel as 1 | 2 | 3
+  };
+};
 export const generateLessonPlan = async (
-  teacherName: string, school: string, discipline: Discipline, grade: Grade, lessonCount: string, bimester: string, bimesterLessonCount: string,
-  startDate: string, endDate: string, bnccSkills: string[], bnccDescriptions: string[]
+  teacherName: string, 
+  school: string, 
+  discipline: Discipline, 
+  grade: Grade, 
+  lessonCount: string, 
+  bimester: string, 
+  bimesterLessonCount: string,
+  startDate: string, 
+  endDate: string, 
+  bnccSkills: string[], 
+  bnccDescriptions: string[]
 ): Promise<LessonPlan> => {
   const ai = getAI();
   const response = await ai.models.generateContent({

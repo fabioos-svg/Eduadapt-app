@@ -1,5 +1,6 @@
 
-import React, { useState } from 'react';
+import * as React from 'react';
+const { useState } = React;
 import { LessonSection } from '../types';
 
 interface Props {
