@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI, Type, ThinkingLevel } from "@google/genai";
 import { AdaptedLesson, Discipline, Grade, LessonPlan, BNCCSearchResult, ProfessionalLesson, ExerciseSheet, ExerciseDifficulty, PEIPlan, MindMap, WordSearch } from "../types";
 
 // Função para obter a instância do AI usando a chave mais atual do contexto
@@ -12,13 +12,17 @@ export const searchBNCCSkill = async (query: string): Promise<BNCCSearchResult> 
     contents: `Pesquise a descrição oficial da BNCC para: "${query}". 
     Retorne no formato exato: CÓDIGO: DESCRIÇÃO COMPLETA. 
     Use estritamente Português Brasileiro com rigor gramatical absoluto.`,
-    config: { tools: [{ googleSearch: {} }], temperature: 0.1 },
+    config: { 
+      tools: [{ googleSearch: {} }], 
+      temperature: 0.1,
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }
+    },
   });
   
   const text = response.text || "";
   if (!text) throw new Error("Não foi possível encontrar a habilidade BNCC.");
 
-  const codeMatch = text.match(/[A-Z]{2}\d{2}[A-Z]{2}\d{2,3}/);
+  const codeMatch = text.match(/[A-Z]{2}\d{2}[A-Z]{2}\d{2}[A-Z]{2}\d{2,3}/) || text.match(/[A-Z]{2}\d{2}[A-Z]{2}\d{2,3}/);
   const code = codeMatch ? codeMatch[0] : (query.length <= 10 ? query.toUpperCase() : "BNCC-INFO");
   let description = text.split(code).pop()?.replace(/^[:\-\s\.]+/g, '').trim() || "Descrição não encontrada.";
   
@@ -74,6 +78,7 @@ export const generateExercises = async (
     Retorne em JSON.`,
     config: {
       responseMimeType: "application/json",
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -91,13 +96,14 @@ export const generateExercises = async (
                 supports: {
                   type: Type.OBJECT,
                   properties: {
-                    level1: { type: Type.STRING },
-                    level2: { type: Type.STRING },
-                    level3: { type: Type.STRING }
-                  }
+                    level1: { type: Type.STRING, description: "Dica visual ou gatilho mental sutil." },
+                    level2: { type: Type.STRING, description: "Guia do processo lógico para resolver, sem dar a resposta." },
+                    level3: { type: Type.STRING, description: "Explicação profunda, analogia e exemplo similar resolvido." }
+                  },
+                  required: ["level1", "level2", "level3"]
                 }
               },
-              required: ["type", "statement", "answerKey", "explanation"]
+              required: ["type", "statement", "answerKey", "explanation", "supports"]
             }
           }
         },
@@ -123,6 +129,7 @@ export const generateMindMap = async (content: string, theme: string): Promise<M
     IMPORTANTE: Use estritamente Português Brasileiro com rigor gramatical absoluto. Revise a ortografia de todas as palavras.`,
     config: {
       responseMimeType: "application/json",
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -224,6 +231,7 @@ export const generateWordSearch = async (content: string, theme: string): Promis
     Retorne um JSON com o título, a grade (array de arrays de strings) e a lista de palavras.`,
     config: {
       responseMimeType: "application/json",
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -261,6 +269,7 @@ export const generateProfessionalLesson = async (
     Retorne em JSON conforme o schema.`,
     config: {
       responseMimeType: "application/json",
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -311,6 +320,7 @@ export const adaptLessonContent = async (
   grade: Grade
 ): Promise<AdaptedLesson> => {
   const ai = getAI();
+  console.log("Iniciando adaptação de aula com gemini-3-flash-preview...");
   const response = await ai.models.generateContent({
     model: 'gemini-3-flash-preview',
     contents: `Adapte pedagogicamente para aluno com Deficiência Intelectual (DI): "${originalContent}". 
@@ -320,7 +330,7 @@ export const adaptLessonContent = async (
     2. LINGUAGEM: Simples, direta, literal, frases curtas.
     3. NÍVEIS DE SUPORTE (OBRIGATÓRIO PARA CADA SEÇÃO):
        - level1 (Nível 1 - A Pista): Dica visual/gatilho mental sutil.
-       - level2 (Nível 2 - O Caminho): Guia passo a passo da lógica, sem dar a resposta.
+       - level2 (Nível 2 - O Caminho): Guia passo a passo da lógica para resolver, sem dar a resposta.
        - level3 (Nível 3 - A Ponte): Explicação profunda, analogia concreta e exemplo resolvido similar.
     4. ATIVIDADES PRÁTICAS: Crie pelo menos 2 experiências concretas (campo 'practicalActivities').
     5. ATIVIDADE PARA CASA: Crie 1 missão lúdica para família (campo 'familyActivity').
@@ -328,6 +338,7 @@ export const adaptLessonContent = async (
     Retorne estritamente JSON conforme o schema.`,
     config: {
       responseMimeType: "application/json",
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -346,10 +357,11 @@ export const adaptLessonContent = async (
                 supports: {
                   type: Type.OBJECT,
                   properties: {
-                    level1: { type: Type.STRING },
-                    level2: { type: Type.STRING },
-                    level3: { type: Type.STRING }
-                  }
+                    level1: { type: Type.STRING, description: "Dica visual/gatilho mental sutil." },
+                    level2: { type: Type.STRING, description: "Guia passo a passo da lógica, sem dar a resposta." },
+                    level3: { type: Type.STRING, description: "Explicação profunda, analogia concreta e exemplo resolvido similar." }
+                  },
+                  required: ["level1", "level2", "level3"]
                 }
               },
               required: ["title", "content", "imagePrompt", "type", "supports"]
@@ -381,13 +393,26 @@ export const adaptLessonContent = async (
       }
     }
   });
-  if (!response.text) throw new Error("Falha ao adaptar conteúdo.");
-  return { ...JSON.parse(response.text), discipline, teacherName, school, chapter, grade };
+
+  if (!response.text) {
+    throw new Error("Resposta vazia do Gemini na adaptação");
+  }
+
+  try {
+    const data = JSON.parse(response.text);
+    console.log("Adaptação concluída com sucesso.");
+    return { ...data, discipline, teacherName, school, chapter, grade };
+  } catch (e) {
+    console.error("Erro ao processar JSON de adaptação:", e);
+    console.log("Resposta bruta:", response.text);
+    throw new Error("Falha ao processar conteúdo adaptado");
+  }
 };
 
 export const generateLessonImage = async (prompt: string): Promise<string> => {
   if (!prompt) return "";
   try {
+    console.log(`Gerando imagem para prompt: ${prompt}`);
     const ai = getAI();
     // Use gemini-2.5-flash-image for more consistent educational illustrations
     const response = await ai.models.generateContent({
@@ -401,9 +426,13 @@ export const generateLessonImage = async (prompt: string): Promise<string> => {
     const candidate = response.candidates?.[0];
     if (candidate?.content?.parts) {
       for (const part of candidate.content.parts) {
-        if (part.inlineData?.data) return `data:image/png;base64,${part.inlineData.data}`;
+        if (part.inlineData?.data) {
+          console.log("Imagem gerada com sucesso.");
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
       }
     }
+    console.warn("Nenhuma imagem retornada pelo modelo.");
     return "";
   } catch (err: any) { 
     console.error("Erro na geração de imagem:", err);
@@ -459,6 +488,7 @@ export const generatePEIPlan = async (
     evaluation (string - monitoramento contínuo e formativo).`,
     config: {
       responseMimeType: "application/json",
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseSchema: {
         type: Type.OBJECT,
         properties: {
@@ -499,6 +529,7 @@ export const generatePEIPlan = async (
     supportLevel: supportLevel as 1 | 2 | 3
   };
 };
+
 export const generateLessonPlan = async (
   teacherName: string, 
   school: string, 
@@ -525,6 +556,7 @@ export const generateLessonPlan = async (
     Importante: A metodologia deve ser detalhada e as atividades devem ser coerentes com as habilidades.`,
     config: {
       responseMimeType: "application/json",
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
       responseSchema: {
         type: Type.OBJECT,
         properties: {

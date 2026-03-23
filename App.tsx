@@ -30,6 +30,7 @@ const App: React.FC = () => {
   const [teacherName, setTeacherName] = useState('');
   const [grade, setGrade] = useState<Grade>('6º ano (Fundamental II)');
   const [status, setStatus] = useState<AppStatus>('idle');
+  const generationRef = React.useRef(0);
   
   const [lesson, setLesson] = useState<AdaptedLesson | null>(null);
   const [plan, setPlan] = useState<LessonPlan | null>(null);
@@ -57,6 +58,7 @@ const App: React.FC = () => {
   const [currentSkills, setCurrentSkills] = useState('');
   const [studentInterests, setStudentInterests] = useState('');
   const [supportLevel, setSupportLevel] = useState<number>(1);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const [isAdaptedExercises, setIsAdaptedExercises] = useState(true);
   const [exerciseCounts, setExerciseCounts] = useState({ multiple_choice: 5, open: 2, true_false: 3 });
@@ -122,6 +124,7 @@ const App: React.FC = () => {
     e.preventDefault();
     if (selectedSkills.length === 0 || !school.trim()) { setError('Preencha os campos obrigatórios (Escola e Habilidades).'); return; }
     setError(null); setStatus('planning');
+    const currentGenId = ++generationRef.current;
     try {
       const res = await generateLessonPlan(
         teacherName, 
@@ -136,8 +139,10 @@ const App: React.FC = () => {
         selectedSkills.map(s => s.code), 
         selectedSkills.map(s => s.desc)
       );
+      if (generationRef.current !== currentGenId) return;
       setPlan(res); setStatus('ready');
     } catch (err: any) { 
+      if (generationRef.current !== currentGenId) return;
       if (err.message?.includes("Requested entity was not found")) {
         setHasApiKey(false);
       }
@@ -153,6 +158,7 @@ const App: React.FC = () => {
       return; 
     }
     setError(null); setStatus('generating-pei');
+    const currentGenId = ++generationRef.current;
     try {
       const res = await generatePEIPlan(
         teacherName, 
@@ -172,8 +178,10 @@ const App: React.FC = () => {
         studentInterests,
         supportLevel
       );
+      if (generationRef.current !== currentGenId) return;
       setPeiPlan(res); setStatus('ready');
     } catch (err: any) { 
+      if (generationRef.current !== currentGenId) return;
       if (err.message?.includes("Requested entity was not found")) {
         setHasApiKey(false);
       }
@@ -185,23 +193,51 @@ const App: React.FC = () => {
   const handleAdapt = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !school.trim()) { setError('Texto da aula e Escola são obrigatórios.'); return; }
-    setError(null); setStatus('adapting');
+    setError(null); 
+    setStatus('adapting');
+    const currentGenId = ++generationRef.current;
+    console.log("Iniciando handleAdapt...");
+    
     try {
       const adapted = await adaptLessonContent(inputText, discipline, teacherName, school, 1, grade);
+      if (generationRef.current !== currentGenId) return;
+      
+      console.log("Conteúdo adaptado recebido:", adapted);
       setLesson(adapted);
+      
+      // Inicia geração de imagens
       setStatus('generating-images');
       const updatedSections = [...adapted.sections];
-      for (let i = 0; i < updatedSections.length; i++) {
-        const url = await generateLessonImage(updatedSections[i].imagePrompt);
-        updatedSections[i].imageUrl = url;
-        setLesson(prev => prev ? ({ ...prev, sections: [...updatedSections] }) : null);
+      
+      // Gera imagens em paralelo para maior velocidade
+      const imagePromises = updatedSections.map(async (section, i) => {
+        if (section.imagePrompt) {
+          try {
+            console.log(`Gerando imagem para seção ${i+1}...`);
+            const url = await generateLessonImage(section.imagePrompt);
+            if (url && generationRef.current === currentGenId) {
+              updatedSections[i].imageUrl = url;
+              // Atualiza o estado individualmente para feedback progressivo
+              setLesson(prev => prev ? ({ ...prev, sections: [...updatedSections] }) : null);
+            }
+          } catch (err) {
+            console.error(`Erro na imagem da seção ${i+1}:`, err);
+          }
+        }
+      });
+
+      await Promise.all(imagePromises);
+      
+      if (generationRef.current === currentGenId) {
+        setStatus('ready');
       }
-      setStatus('ready');
     } catch (err: any) { 
+      if (generationRef.current !== currentGenId) return;
+      console.error("Erro fatal no handleAdapt:", err);
       if (err.message?.includes("Requested entity was not found")) {
         setHasApiKey(false);
       }
-      setError("Erro na adaptação para DI. Verifique sua chave."); 
+      setError("Erro na adaptação para DI. Verifique sua chave e tente novamente."); 
       setStatus('idle'); 
     }
   };
@@ -210,19 +246,35 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!inputText.trim()) { setError('Conteúdo da aula é obrigatório.'); return; }
     setError(null); setStatus('designing');
+    const currentGenId = ++generationRef.current;
+    
     try {
       const res = await generateProfessionalLesson(inputText, discipline, grade);
+      if (generationRef.current !== currentGenId) return;
+      
       setProLesson(res); 
       setStatus('generating-images');
+      
       const updatedSlides = [...res.slides];
-      for (let i = 0; i < updatedSlides.length; i++) {
-        const url = await generateLessonImage(updatedSlides[i].imagePrompt);
-        updatedSlides[i].imageUrl = url;
-        // Incrementally update slides to show progress
-        setProLesson(prev => prev ? ({ ...prev, slides: [...updatedSlides] }) : null);
+      const imagePromises = updatedSlides.map(async (slide, i) => {
+        try {
+          const url = await generateLessonImage(slide.imagePrompt);
+          if (url && generationRef.current === currentGenId) {
+            updatedSlides[i].imageUrl = url;
+            setProLesson(prev => prev ? ({ ...prev, slides: [...updatedSlides] }) : null);
+          }
+        } catch (err) {
+          console.error(`Erro na imagem do slide ${i+1}:`, err);
+        }
+      });
+
+      await Promise.all(imagePromises);
+      
+      if (generationRef.current === currentGenId) {
+        setStatus('ready');
       }
-      setStatus('ready');
     } catch (err: any) { 
+      if (generationRef.current !== currentGenId) return;
       if (err.message?.includes("Requested entity was not found")) {
         setHasApiKey(false);
       }
@@ -235,12 +287,17 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!inputText.trim()) { setError('Conteúdo base é necessário.'); return; }
     setError(null); setStatus('generating-exercises');
+    const currentGenId = ++generationRef.current;
+    
     try {
       const res = await generateExercises(inputText, discipline, grade, exerciseCounts, isAdaptedExercises, difficulty);
+      if (generationRef.current !== currentGenId) return;
+      
       setExercises(res);
       setVisibleSupports({});
       setStatus('ready');
     } catch (err: any) { 
+      if (generationRef.current !== currentGenId) return;
       if (err.message?.includes("Requested entity was not found")) {
         setHasApiKey(false);
       }
@@ -253,11 +310,16 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!inputText.trim()) { setError('Conteúdo é obrigatório.'); return; }
     setError(null); setStatus('generating-mindmap');
+    const currentGenId = ++generationRef.current;
+    
     try {
       const res = await generateMindMap(inputText, "Mapa Mental");
+      if (generationRef.current !== currentGenId) return;
+      
       setMindMap(res); setStatus('ready');
       setIsEditingMindMap(false);
     } catch (err: any) { 
+      if (generationRef.current !== currentGenId) return;
       if (err.message?.includes("Requested entity was not found")) {
         setHasApiKey(false);
       }
@@ -270,16 +332,23 @@ const App: React.FC = () => {
     if (!mindMap) return;
     setStatus('generating-mindmap');
     setError(null);
+    const currentGenId = ++generationRef.current;
+    
     try {
       const newImageUrl = await regenerateMindMapImage(mindMap);
+      if (generationRef.current !== currentGenId) return;
+      
       if (newImageUrl) {
         setMindMap({ ...mindMap, imageUrl: newImageUrl });
       }
     } catch (err: any) {
+      if (generationRef.current !== currentGenId) return;
       console.error("Erro ao regenerar imagem:", err);
       setError("Erro ao atualizar imagem do mapa. Tente novamente.");
     } finally {
-      setStatus('ready');
+      if (generationRef.current === currentGenId) {
+        setStatus('ready');
+      }
     }
   };
 
@@ -295,10 +364,15 @@ const App: React.FC = () => {
     e.preventDefault();
     if (!inputText.trim()) { setError('Conteúdo é obrigatório.'); return; }
     setError(null); setStatus('generating-wordsearch');
+    const currentGenId = ++generationRef.current;
+    
     try {
       const res = await generateWordSearch(inputText, "Caça-Palavras");
+      if (generationRef.current !== currentGenId) return;
+      
       setWordSearch(res); setStatus('ready');
     } catch (err: any) { 
+      if (generationRef.current !== currentGenId) return;
       if (err.message?.includes("Requested entity was not found")) {
         setHasApiKey(false);
       }
@@ -308,196 +382,723 @@ const App: React.FC = () => {
   };
 
   const reset = () => {
+    console.log("Resetting application state...");
+    generationRef.current++; // Aborta gerações em curso
     setLesson(null); setPlan(null); setPeiPlan(null); setMindMap(null); setWordSearch(null); setProLesson(null); setExercises(null); setInputText(''); setSelectedSkills([]); 
-    setStatus('idle'); setError(null); setVisibleSupports({}); setIsEditingPei(false);
+    setStatus('idle'); setError(null); setVisibleSupports({}); setIsEditingPei(false); setIsAdaptedExercises(false); setIsEditingMindMap(false);
   };
 
-  const fullReset = () => { reset(); setAppMode(null); }
+  const fullReset = () => { 
+    try {
+      console.log("Full reset to home screen...");
+      reset(); 
+      setAppMode(null); 
+    } catch (e) {
+      console.error("Error during full reset:", e);
+      // Fallback: force state reset
+      setAppMode(null);
+      setStatus('idle');
+    }
+  }
+
+  const downloadBlob = (blob: Blob, fileName: string) => {
+    try {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.style.display = 'none';
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+      }, 100);
+      console.log(`Download de ${fileName} iniciado.`);
+    } catch (e) {
+      console.error("Erro no download do blob:", e);
+      // Fallback para saveAs se disponível
+      try {
+        saveAs(blob, fileName);
+      } catch (err) {
+        alert("Erro ao baixar o arquivo. Por favor, tente novamente.");
+      }
+    }
+  };
 
   const handleExportDocx = async () => {
-    if (!plan && !peiPlan) {
-      console.error("Nenhum plano ou PEI disponível para exportação.");
-      return;
+    console.log("Iniciando exportação Word (Plano/PEI)...");
+    try {
+      if (!plan && !peiPlan) {
+        console.error("Nenhum plano ou PEI disponível para exportação.");
+        alert("Erro: Nenhum plano disponível para exportação.");
+        return;
+      }
+
+      const currentPlan = peiPlan || plan;
+      if (!currentPlan) return;
+
+      const children: any[] = [
+        new Paragraph({
+          text: (currentPlan.school || "ESCOLA").toUpperCase(),
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          text: peiPlan ? "PLANO EDUCACIONAL INDIVIDUALIZADO (PEI)" : `Plano de Aula – ${currentPlan.bimester || ""}`,
+          heading: HeadingLevel.HEADING_2,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        }),
+      ];
+
+      if (peiPlan) {
+        children.push(
+          new Paragraph({ 
+            children: [new TextRun({ text: "1. IDENTIFICAÇÃO E PERFIL DO ALUNO", bold: true })],
+            spacing: { before: 400, after: 200 } 
+          }),
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({
+                children: [
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Aluno(a):", bold: true }), new TextRun({ text: ` ${peiPlan.studentName || ""}` })] })] }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Diagnóstico:", bold: true }), new TextRun({ text: ` ${peiPlan.studentDiagnosis || ""}` })] })] }),
+                ],
+              }),
+              new TableRow({
+                children: [
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Interesses:", bold: true }), new TextRun({ text: ` ${peiPlan.studentInterests || ""}` })] })] }),
+                  new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Nível de Suporte:", bold: true }), new TextRun({ text: ` Nível ${peiPlan.supportLevel || ""}` })] })] }),
+                ],
+              }),
+              new TableRow({
+                children: [
+                  new TableCell({ 
+                    columnSpan: 2,
+                    children: [new Paragraph({ children: [new TextRun({ text: "Habilidades Atuais:", bold: true }), new TextRun({ text: ` ${peiPlan.currentSkills || ""}` })] })] 
+                  }),
+                ],
+              }),
+            ],
+          })
+        );
+      } else {
+        children.push(
+          new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            rows: [
+              new TableRow({
+                children: [
+                  new TableCell({
+                    children: [new Paragraph({ children: [new TextRun({ text: "Professor:", bold: true }), new TextRun({ text: ` ${currentPlan.teacherName || ""}` })] })],
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                  }),
+                  new TableCell({
+                    children: [new Paragraph({ children: [new TextRun({ text: "Componente curricular:", bold: true }), new TextRun({ text: ` ${currentPlan.discipline || ""}` })] })],
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                  }),
+                ],
+              }),
+              new TableRow({
+                children: [
+                  new TableCell({
+                    children: [new Paragraph({ children: [new TextRun({ text: "Ano/Série:", bold: true }), new TextRun({ text: ` ${currentPlan.grade || ""}` })] })],
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                  }),
+                  new TableCell({
+                    children: [new Paragraph({ children: [new TextRun({ text: "Aulas no bimestre:", bold: true }), new TextRun({ text: ` ${currentPlan.bimesterLessonCount || ""}` })] })],
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                  }),
+                ],
+              }),
+              new TableRow({
+                children: [
+                  new TableCell({
+                    children: [new Paragraph({ children: [new TextRun({ text: "Tempo de duração:", bold: true }), new TextRun({ text: ` ${currentPlan.lessonCount || ""} aulas` })] })],
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                  }),
+                  new TableCell({
+                    children: [new Paragraph({ children: [new TextRun({ text: "Data/período:", bold: true }), new TextRun({ text: ` ${currentPlan.period || ""}` })] })],
+                    margins: { top: 100, bottom: 100, left: 100, right: 100 },
+                  }),
+                ],
+              }),
+            ],
+          })
+        );
+      }
+
+      if (peiPlan) {
+        children.push(
+          new Paragraph({ 
+            children: [new TextRun({ text: "2. OBJETIVOS DE APRENDIZAGEM (BNCC ADAPTADA)", bold: true })],
+            spacing: { before: 400, after: 200 } 
+          }),
+          new Paragraph({ children: [new TextRun({ text: "Metas de Curto Prazo:", bold: true })] }),
+          ...peiPlan.shortTermGoals.map(goal => new Paragraph({ text: `• ${goal}`, bullet: { level: 0 } })),
+          new Paragraph({ children: [new TextRun({ text: "Metas de Médio Prazo:", bold: true }), ], spacing: { before: 200 } }),
+          ...peiPlan.mediumTermGoals.map(goal => new Paragraph({ text: `• ${goal}`, bullet: { level: 0 } })),
+          
+          new Paragraph({ 
+            children: [new TextRun({ text: "3. ESTRATÉGIAS E ADAPTAÇÕES PEDAGÓGICAS", bold: true })],
+            spacing: { before: 400, after: 200 } 
+          }),
+          new Paragraph({ text: peiPlan.pedagogicalStrategies || "" }),
+
+          new Paragraph({ 
+            children: [new TextRun({ text: "4. EXEMPLOS DE ATIVIDADES PRÁTICAS", bold: true })],
+            spacing: { before: 400, after: 200 } 
+          }),
+          new Paragraph({ text: peiPlan.activities || "" }),
+
+          new Paragraph({ 
+            children: [new TextRun({ text: "5. AVALIAÇÃO E MONITORAMENTO", bold: true })],
+            spacing: { before: 400, after: 200 } 
+          }),
+          new Paragraph({ text: peiPlan.evaluation || "" })
+        );
+      } else {
+        children.push(
+          new Paragraph({ 
+            children: [new TextRun({ text: "Habilidades trabalhadas:", bold: true })],
+            spacing: { before: 400, after: 200 } 
+          }),
+          ...(currentPlan.bnccSkills || []).map((code, idx) => 
+            new Paragraph({
+              children: [
+                new TextRun({ text: `• ${code}: `, bold: true }),
+                new TextRun({ text: currentPlan.bnccDescriptions[idx] || "" }),
+              ],
+              spacing: { before: 100 },
+            })
+          ),
+          new Paragraph({ 
+            children: [new TextRun({ text: "Objetivos:", bold: true })],
+            spacing: { before: 400, after: 200 } 
+          }),
+          ...(currentPlan.objectives || []).map(obj => new Paragraph({ text: `• ${obj}`, spacing: { before: 100 } })),
+          new Paragraph({ 
+            children: [new TextRun({ text: "Metodologia / Orientações aos alunos:", bold: true })],
+            spacing: { before: 400, after: 200 } 
+          }),
+          new Paragraph({ text: currentPlan.methodology || "", spacing: { after: 200 } }),
+          new Paragraph({ 
+            children: [new TextRun({ text: "Recursos utilizados:", bold: true })],
+            spacing: { before: 400, after: 200 } 
+          }),
+          new Paragraph({ text: (currentPlan.resources || []).join(", "), spacing: { after: 200 } }),
+          new Paragraph({ 
+            children: [new TextRun({ text: "Atividades desenvolvidas / Avaliação:", bold: true })],
+            spacing: { before: 400, after: 200 } 
+          }),
+          new Paragraph({ text: currentPlan.evaluation || "", spacing: { after: 200 } })
+        );
+      }
+
+      const doc = new Document({
+        sections: [
+          {
+            properties: {},
+            children: children,
+          },
+        ],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const safeStudentName = (peiPlan?.studentName || studentName || "Sem_Nome").replace(/\s+/g, '_');
+      const fileName = peiPlan ? `Plano_PEI_${safeStudentName}.docx` : `Plano_Aula_${currentPlan.discipline.replace(/\s+/g, '_')}.docx`;
+      
+      downloadBlob(blob, fileName);
+    } catch (error) {
+      console.error("Erro ao exportar Word:", error);
+      alert("Erro ao gerar o arquivo Word. Por favor, tente novamente.");
     }
+  };
 
-    const currentPlan = peiPlan || plan;
-    if (!currentPlan) return;
+  const handleExportExercisesDocx = async () => {
+    try {
+      if (!exercises) {
+        alert("Erro: Nenhum exercício disponível para exportação.");
+        return;
+      }
 
-    const children: any[] = [
-      new Paragraph({
-        text: currentPlan.school.toUpperCase(),
-        heading: HeadingLevel.HEADING_1,
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 200 },
-      }),
-      new Paragraph({
-        text: peiPlan ? "PLANO EDUCACIONAL INDIVIDUALIZADO (PEI)" : `Plano de Aula – ${currentPlan.bimester}`,
-        heading: HeadingLevel.HEADING_2,
-        alignment: AlignmentType.CENTER,
-        spacing: { after: 400 },
-      }),
-    ];
-
-    if (peiPlan) {
-      children.push(
-        new Paragraph({ 
-          children: [new TextRun({ text: "1. IDENTIFICAÇÃO E PERFIL DO ALUNO", bold: true })],
-          spacing: { before: 400, after: 200 } 
+      const children: any[] = [
+        new Paragraph({
+          text: (school || "ESCOLA").toUpperCase(),
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
         }),
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          rows: [
-            new TableRow({
-              children: [
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Aluno(a):", bold: true }), new TextRun({ text: ` ${peiPlan.studentName}` })] })] }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Diagnóstico:", bold: true }), new TextRun({ text: ` ${peiPlan.studentDiagnosis}` })] })] }),
-              ],
-            }),
-            new TableRow({
-              children: [
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Interesses:", bold: true }), new TextRun({ text: ` ${peiPlan.studentInterests}` })] })] }),
-                new TableCell({ children: [new Paragraph({ children: [new TextRun({ text: "Nível de Suporte:", bold: true }), new TextRun({ text: ` Nível ${peiPlan.supportLevel}` })] })] }),
-              ],
-            }),
-            new TableRow({
-              children: [
-                new TableCell({ 
-                  columnSpan: 2,
-                  children: [new Paragraph({ children: [new TextRun({ text: "Habilidades Atuais:", bold: true }), new TextRun({ text: ` ${peiPlan.currentSkills}` })] })] 
-                }),
-              ],
-            }),
+        new Paragraph({
+          text: exercises.title.toUpperCase(),
+          heading: HeadingLevel.HEADING_2,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({ text: "Professor(a): ", bold: true }),
+            new TextRun({ text: teacherName || "" }),
           ],
-        })
-      );
-    } else {
-      children.push(
-        new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          rows: [
-            new TableRow({
-              children: [
-                new TableCell({
-                  children: [new Paragraph({ children: [new TextRun({ text: "Professor:", bold: true }), new TextRun({ text: ` ${currentPlan.teacherName}` })] })],
-                  margins: { top: 100, bottom: 100, left: 100, right: 100 },
-                }),
-                new TableCell({
-                  children: [new Paragraph({ children: [new TextRun({ text: "Componente curricular:", bold: true }), new TextRun({ text: ` ${currentPlan.discipline}` })] })],
-                  margins: { top: 100, bottom: 100, left: 100, right: 100 },
-                }),
-              ],
-            }),
-            new TableRow({
-              children: [
-                new TableCell({
-                  children: [new Paragraph({ children: [new TextRun({ text: "Ano/Série:", bold: true }), new TextRun({ text: ` ${currentPlan.grade}` })] })],
-                  margins: { top: 100, bottom: 100, left: 100, right: 100 },
-                }),
-                new TableCell({
-                  children: [new Paragraph({ children: [new TextRun({ text: "Aulas no bimestre:", bold: true }), new TextRun({ text: ` ${currentPlan.bimesterLessonCount}` })] })],
-                  margins: { top: 100, bottom: 100, left: 100, right: 100 },
-                }),
-              ],
-            }),
-            new TableRow({
-              children: [
-                new TableCell({
-                  children: [new Paragraph({ children: [new TextRun({ text: "Tempo de duração:", bold: true }), new TextRun({ text: ` ${currentPlan.lessonCount} aulas` })] })],
-                  margins: { top: 100, bottom: 100, left: 100, right: 100 },
-                }),
-                new TableCell({
-                  children: [new Paragraph({ children: [new TextRun({ text: "Data/período:", bold: true }), new TextRun({ text: ` ${currentPlan.period}` })] })],
-                  margins: { top: 100, bottom: 100, left: 100, right: 100 },
-                }),
-              ],
-            }),
-          ],
-        })
-      );
-    }
-
-    if (peiPlan) {
-      children.push(
-        new Paragraph({ 
-          children: [new TextRun({ text: "2. OBJETIVOS DE APRENDIZAGEM (BNCC ADAPTADA)", bold: true })],
-          spacing: { before: 400, after: 200 } 
+          spacing: { after: 200 },
         }),
-        new Paragraph({ children: [new TextRun({ text: "Metas de Curto Prazo:", bold: true })] }),
-        ...peiPlan.shortTermGoals.map(goal => new Paragraph({ text: `• ${goal}`, bullet: { level: 0 } })),
-        new Paragraph({ children: [new TextRun({ text: "Metas de Médio Prazo:", bold: true }), ], spacing: { before: 200 } }),
-        ...peiPlan.mediumTermGoals.map(goal => new Paragraph({ text: `• ${goal}`, bullet: { level: 0 } })),
-        
-        new Paragraph({ 
-          children: [new TextRun({ text: "3. ESTRATÉGIAS E ADAPTAÇÕES PEDAGÓGICAS", bold: true })],
-          spacing: { before: 400, after: 200 } 
-        }),
-        new Paragraph({ text: peiPlan.pedagogicalStrategies }),
-
-        new Paragraph({ 
-          children: [new TextRun({ text: "4. EXEMPLOS DE ATIVIDADES PRÁTICAS", bold: true })],
-          spacing: { before: 400, after: 200 } 
-        }),
-        new Paragraph({ text: peiPlan.activities }),
-
-        new Paragraph({ 
-          children: [new TextRun({ text: "5. AVALIAÇÃO E MONITORAMENTO", bold: true })],
-          spacing: { before: 400, after: 200 } 
-        }),
-        new Paragraph({ text: peiPlan.evaluation })
-      );
-    } else {
-      children.push(
-        new Paragraph({ 
-          children: [new TextRun({ text: "Habilidades trabalhadas:", bold: true })],
-          spacing: { before: 400, after: 200 } 
-        }),
-        ...currentPlan.bnccSkills.map((code, idx) => 
+        ...(studentName ? [
           new Paragraph({
             children: [
-              new TextRun({ text: `• ${code}: `, bold: true }),
-              new TextRun({ text: currentPlan.bnccDescriptions[idx] }),
+              new TextRun({ text: "Aluno(a): ", bold: true }),
+              new TextRun({ text: studentName }),
             ],
-            spacing: { before: 100 },
+            spacing: { after: 200 },
           })
-        ),
-        new Paragraph({ 
-          children: [new TextRun({ text: "Objetivos:", bold: true })],
-          spacing: { before: 400, after: 200 } 
+        ] : []),
+        new Paragraph({
+          children: [
+            new TextRun({ text: "Disciplina: ", bold: true }),
+            new TextRun({ text: discipline || "" }),
+          ],
+          spacing: { after: 200 },
         }),
-        ...currentPlan.objectives.map(obj => new Paragraph({ text: `• ${obj}`, spacing: { before: 100 } })),
-        new Paragraph({ 
-          children: [new TextRun({ text: "Metodologia / Orientações aos alunos:", bold: true })],
-          spacing: { before: 400, after: 200 } 
+        new Paragraph({
+          children: [
+            new TextRun({ text: "Série: ", bold: true }),
+            new TextRun({ text: grade || "" }),
+          ],
+          spacing: { after: 400 },
         }),
-        new Paragraph({ text: currentPlan.methodology, spacing: { after: 200 } }),
-        new Paragraph({ 
-          children: [new TextRun({ text: "Recursos utilizados:", bold: true })],
-          spacing: { before: 400, after: 200 } 
-        }),
-        new Paragraph({ text: currentPlan.resources.join(", "), spacing: { after: 200 } }),
-        new Paragraph({ 
-          children: [new TextRun({ text: "Atividades desenvolvidas / Avaliação:", bold: true })],
-          spacing: { before: 400, after: 200 } 
-        }),
-        new Paragraph({ text: currentPlan.evaluation, spacing: { after: 200 } })
+      ];
+
+      exercises.questions.forEach((q, idx) => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `${idx + 1}. `, bold: true }),
+              new TextRun({ text: q.statement }),
+            ],
+            spacing: { before: 400, after: 200 },
+          })
+        );
+
+        if (q.type === 'multiple_choice' && q.options) {
+          q.options.forEach((opt) => {
+            children.push(
+              new Paragraph({
+                text: `( ) ${opt}`,
+                indent: { left: 720 },
+                spacing: { after: 100 },
+              })
+            );
+          });
+        } else if (q.type === 'true_false') {
+          children.push(
+            new Paragraph({
+              text: "( ) Verdadeiro ( ) Falso",
+              indent: { left: 720 },
+              spacing: { after: 100 },
+            })
+          );
+        } else if (q.type === 'open') {
+          children.push(
+            new Paragraph({
+              text: "__________________________________________________________________________",
+              indent: { left: 720 },
+              spacing: { after: 100 },
+            }),
+            new Paragraph({
+              text: "__________________________________________________________________________",
+              indent: { left: 720 },
+              spacing: { after: 100 },
+            })
+          );
+        }
+      });
+
+      // Gabarito
+      children.push(
+        new Paragraph({
+          text: "GABARITO PARA O PROFESSOR",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 800, after: 400 },
+          pageBreakBefore: true,
+        })
       );
+
+      exercises.questions.forEach((q, idx) => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `Questão ${idx + 1}: `, bold: true }),
+              new TextRun({ text: q.answerKey }),
+            ],
+            spacing: { after: 100 },
+          }),
+          new Paragraph({
+            children: [
+              new TextRun({
+                text: q.explanation || "",
+                italics: true,
+              })
+            ],
+            spacing: { after: 200 },
+          })
+        );
+      });
+
+      const doc = new Document({
+        sections: [{ children }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const safeTitle = (exercises.title || "Exercicios").replace(/\s+/g, '_');
+      const safeStudentName = (studentName || "Geral").replace(/\s+/g, '_');
+      const fileName = `Exercicios_${safeTitle}_${safeStudentName}.docx`;
+      
+      downloadBlob(blob, fileName);
+    } catch (error) {
+      console.error("Erro ao exportar Word (Exercícios):", error);
+      alert("Erro ao gerar o arquivo Word. Por favor, tente novamente.");
     }
+  };
 
-    const doc = new Document({
-      sections: [
-        {
-          properties: {},
-          children: children,
-        },
-      ],
-    });
+  useEffect(() => {
+    const checkLibs = () => {
+      console.log("Verificando bibliotecas...");
+      console.log("- html2pdf:", !!(window as any).html2pdf);
+      console.log("- PptxGenJS:", !!(window as any).PptxGenJS);
+    };
+    checkLibs();
+    
+    // Fallback de carregamento se necessário
+    if (!(window as any).html2pdf) {
+      const script = document.createElement('script');
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+      script.async = true;
+      script.onload = () => console.log("html2pdf.js carregado com sucesso.");
+      document.head.appendChild(script);
+    }
+  }, []);
 
-    const blob = await Packer.toBlob(doc);
-    const fileName = peiPlan ? `Plano_PEI_${peiPlan.studentName.replace(/\s+/g, '_')}.docx` : `Plano_Aula_${currentPlan.discipline.replace(/\s+/g, '_')}.docx`;
-    saveAs(blob, fileName);
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleExportLessonDocx = async () => {
+    console.log("Iniciando exportação Word (Aula Adaptada)...");
+    try {
+      if (!lesson) {
+        alert("Erro: Nenhuma aula disponível para exportação.");
+        return;
+      }
+
+      const children: any[] = [
+        new Paragraph({
+          text: (school || "ESCOLA").toUpperCase(),
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          text: lesson.adaptedTitle.toUpperCase(),
+          heading: HeadingLevel.HEADING_2,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({ text: "Professor(a): ", bold: true }),
+            new TextRun({ text: teacherName || "" }),
+          ],
+          spacing: { after: 200 },
+        }),
+        ...(studentName ? [
+          new Paragraph({
+            children: [
+              new TextRun({ text: "Aluno(a): ", bold: true }),
+              new TextRun({ text: studentName }),
+            ],
+            spacing: { after: 200 },
+          })
+        ] : []),
+        new Paragraph({
+          children: [
+            new TextRun({ text: "Disciplina: ", bold: true }),
+            new TextRun({ text: discipline || "" }),
+          ],
+          spacing: { after: 200 },
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({ text: "Série: ", bold: true }),
+            new TextRun({ text: grade || "" }),
+          ],
+          spacing: { after: 400 },
+        }),
+        new Paragraph({
+          text: "RESUMO DA AULA",
+          heading: HeadingLevel.HEADING_3,
+          spacing: { before: 400, after: 200 },
+        }),
+        new Paragraph({
+          text: lesson.summary,
+          spacing: { after: 400 },
+        }),
+      ];
+
+      lesson.sections.forEach((sec, idx) => {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: `${idx + 1}. ${sec.title}`, bold: true }),
+            ],
+            heading: HeadingLevel.HEADING_3,
+            spacing: { before: 400, after: 200 },
+          }),
+          new Paragraph({
+            text: sec.content,
+            spacing: { after: 200 },
+          })
+        );
+
+        if (sec.supports) {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: "Suporte Pedagógico:", bold: true, italics: true })],
+              spacing: { before: 200 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Nível 1 (A Pista): ", bold: true }),
+                new TextRun({ text: sec.supports.level1 }),
+              ],
+              spacing: { before: 100 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Nível 2 (O Caminho): ", bold: true }),
+                new TextRun({ text: sec.supports.level2 }),
+              ],
+              spacing: { before: 100 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Nível 3 (A Ponte): ", bold: true }),
+                new TextRun({ text: sec.supports.level3 }),
+              ],
+              spacing: { before: 100 },
+            })
+          );
+        }
+      });
+
+      if (lesson.practicalActivities && lesson.practicalActivities.length > 0) {
+        children.push(
+          new Paragraph({
+            text: "ATIVIDADES PRÁTICAS",
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 600, after: 300 },
+          })
+        );
+
+        lesson.practicalActivities.forEach((act) => {
+          children.push(
+            new Paragraph({
+              text: act.title,
+              heading: HeadingLevel.HEADING_3,
+              spacing: { before: 300, after: 100 },
+            }),
+            new Paragraph({
+              text: act.description,
+              spacing: { after: 100 },
+            }),
+            new Paragraph({
+              children: [
+                new TextRun({ text: "Materiais: ", bold: true }),
+                new TextRun({ text: act.materials.join(", ") }),
+              ],
+              spacing: { after: 200 },
+            })
+          );
+        });
+      }
+
+      if (lesson.familyActivity) {
+        children.push(
+          new Paragraph({
+            text: "MISSÃO EM FAMÍLIA",
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 600, after: 300 },
+          }),
+          new Paragraph({
+            text: lesson.familyActivity.title,
+            heading: HeadingLevel.HEADING_3,
+            spacing: { before: 300, after: 100 },
+          }),
+          new Paragraph({
+            text: lesson.familyActivity.description,
+            spacing: { after: 200 },
+          })
+        );
+      }
+
+      const doc = new Document({
+        sections: [{ properties: {}, children }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const safeStudentName = (studentName || "Geral").replace(/\s+/g, '_');
+      const fileName = `Aula_Adaptada_${safeStudentName}.docx`;
+      downloadBlob(blob, fileName);
+    } catch (error) {
+      console.error("Erro ao exportar Aula Adaptada:", error);
+      alert("Erro ao gerar o arquivo Word.");
+    }
+  };
+
+  const handleExportMindMapDocx = async () => {
+    try {
+      if (!mindMap) {
+        alert("Erro: Nenhum mapa mental disponível.");
+        return;
+      }
+
+      const children: any[] = [
+        new Paragraph({
+          text: mindMap.title.toUpperCase(),
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        }),
+        new Paragraph({
+          children: [
+            new TextRun({ text: "Tópico Central: ", bold: true }),
+            new TextRun({ text: mindMap.centralTopic }),
+          ],
+          spacing: { after: 400 },
+        }),
+        new Paragraph({
+          text: "TÓPICOS E RAMIFICAÇÕES",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 400, after: 200 },
+        }),
+        ...mindMap.nodes.map(node => new Paragraph({
+          text: `• ${node.label}`,
+          spacing: { before: 100 },
+          indent: { left: 720 }
+        }))
+      ];
+
+      const doc = new Document({
+        sections: [{ properties: {}, children }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const fileName = "Mapa_Mental.docx";
+      downloadBlob(blob, fileName);
+    } catch (error) {
+      console.error("Erro ao exportar Mapa Mental:", error);
+      alert("Erro ao gerar o arquivo Word.");
+    }
+  };
+
+  const handleExportWordSearchDocx = async () => {
+    try {
+      if (!wordSearch) {
+        alert("Erro: Nenhum caça-palavras disponível.");
+        return;
+      }
+
+      const tableRows = wordSearch.grid.map(row => {
+        return new TableRow({
+          children: row.map(char => new TableCell({
+            children: [new Paragraph({ text: char, alignment: AlignmentType.CENTER })],
+            width: { size: 300, type: WidthType.DXA },
+          }))
+        });
+      });
+
+      const children: any[] = [
+        new Paragraph({
+          text: wordSearch.title.toUpperCase(),
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        }),
+        new Table({
+          rows: tableRows,
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          alignment: AlignmentType.CENTER,
+        }),
+        new Paragraph({
+          text: "PALAVRAS PARA ENCONTRAR",
+          heading: HeadingLevel.HEADING_2,
+          spacing: { before: 600, after: 200 },
+        }),
+        new Paragraph({
+          text: wordSearch.words.join(", "),
+          spacing: { after: 400 },
+        })
+      ];
+
+      const doc = new Document({
+        sections: [{ properties: {}, children }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const fileName = "Caca_Palavras.docx";
+      downloadBlob(blob, fileName);
+    } catch (error) {
+      console.error("Erro ao exportar Caça-Palavras:", error);
+      alert("Erro ao gerar o arquivo Word.");
+    }
+  };
+
+  const handleExportSlidesDocx = async () => {
+    try {
+      if (!proLesson || !proLesson.slides || proLesson.slides.length === 0) {
+        alert("Erro: Nenhuma apresentação disponível.");
+        return;
+      }
+
+      const children: any[] = [
+        new Paragraph({
+          text: "CONTEÚDO DA APRESENTAÇÃO",
+          heading: HeadingLevel.HEADING_1,
+          alignment: AlignmentType.CENTER,
+          spacing: { after: 400 },
+        }),
+      ];
+
+      proLesson.slides.forEach((slide, idx) => {
+        children.push(
+          new Paragraph({
+            text: `Slide ${idx + 1}: ${slide.title}`,
+            heading: HeadingLevel.HEADING_2,
+            spacing: { before: 400, after: 200 },
+          }),
+          new Paragraph({
+            text: slide.content,
+            spacing: { after: 200 },
+          })
+        );
+      });
+
+      const doc = new Document({
+        sections: [{ properties: {}, children }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const fileName = "Aula_Apresentacao.docx";
+      downloadBlob(blob, fileName);
+    } catch (error) {
+      console.error("Erro ao exportar Apresentação para Word:", error);
+      alert("Erro ao gerar o arquivo Word.");
+    }
   };
 
   const handleSavePDF = (id: string, filename: string) => {
+    console.log(`Tentando gerar PDF para ID: ${id}, Arquivo: ${filename}`);
     const element = document.getElementById(id);
     if (!element) {
       console.error(`Elemento com ID ${id} não encontrado.`);
@@ -505,6 +1106,19 @@ const App: React.FC = () => {
       return;
     }
     
+    setDownloadingId(id);
+    
+    // @ts-ignore
+    const html2pdf = window.html2pdf;
+    
+    if (!html2pdf) {
+      console.error("Biblioteca html2pdf não encontrada no objeto window.");
+      alert("Erro: A biblioteca de PDF não foi carregada corretamente. Por favor, recarregue a página.");
+      setDownloadingId(null);
+      return;
+    }
+
+    // Opções simplificadas para maior compatibilidade
     const opt = {
       margin: 10,
       filename: filename,
@@ -512,29 +1126,46 @@ const App: React.FC = () => {
       html2canvas: { 
         scale: 2, 
         useCORS: true, 
+        logging: false,
         letterRendering: true,
         allowTaint: true,
-        logging: false
+        backgroundColor: '#ffffff'
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
       pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
     };
 
-    if ((window as any).html2pdf) {
-      const exporter = (window as any).html2pdf().from(element).set(opt);
-      exporter.save().catch((err: any) => {
-        console.error("Erro ao salvar PDF:", err);
-        // Segunda tentativa com configurações mais simples se falhar
-        opt.html2canvas.useCORS = false;
-        (window as any).html2pdf().from(element).set(opt).save();
-      });
-    } else {
-      alert("Biblioteca de PDF ainda carregando. Por favor, aguarde um momento e tente novamente.");
+    try {
+      // Adiciona classe de segurança para exportação
+      element.classList.add('pdf-export-safe');
+      
+      // Pequeno delay para garantir que imagens e estilos estejam prontos
+      setTimeout(() => {
+        html2pdf().from(element).set(opt).save().then(() => {
+          console.log(`PDF ${filename} gerado com sucesso.`);
+          element.classList.remove('pdf-export-safe');
+          setDownloadingId(null);
+        }).catch((err: any) => {
+          console.error("Erro no processamento do PDF:", err);
+          element.classList.remove('pdf-export-safe');
+          setDownloadingId(null);
+          alert("Erro ao gerar o PDF. Tente usar o botão de imprimir do navegador.");
+        });
+      }, 800);
+    } catch (e) {
+      console.error("Erro fatal ao chamar html2pdf:", e);
+      element.classList.remove('pdf-export-safe');
+      setDownloadingId(null);
+      alert("Ocorreu um erro ao gerar o PDF. Tente novamente.");
     }
   };
 
   const handleExportPPTX = () => {
     if (!proLesson) return;
+    if (!(window as any).PptxGenJS) {
+      alert("Biblioteca de PowerPoint ainda carregando. Por favor, aguarde um momento e tente novamente.");
+      return;
+    }
     try {
       const pptx = new (window as any).PptxGenJS();
       
@@ -666,7 +1297,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {appMode && !lesson && !plan && !proLesson && !exercises && (
+        {appMode && !lesson && !plan && !proLesson && !exercises && !peiPlan && !mindMap && !wordSearch && (
           <div className="max-w-4xl mx-auto">
             <div className="mb-10 text-center">
               <span className="bg-blue-100 text-blue-600 px-4 py-1.5 rounded-full text-xs font-black uppercase tracking-widest border border-blue-200">{features.find(f => f.id === appMode)?.title}</span>
@@ -690,6 +1321,12 @@ const App: React.FC = () => {
                     <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Escola</label>
                     <input type="text" value={school} onChange={e => setSchool(e.target.value)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50" placeholder="Unidade Escolar" />
                   </div>
+                  {appMode !== 'planning' && (
+                    <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-blue-50">
+                      <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Aluno(a) (Opcional)</label>
+                      <input type="text" value={studentName} onChange={e => setStudentName(e.target.value)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50" placeholder="Nome do aluno" />
+                    </div>
+                  )}
                   <div className="bg-white p-6 rounded-[2rem] shadow-xl border border-blue-50">
                     <label className="block text-blue-400 font-bold text-[10px] uppercase mb-2 tracking-widest">Disciplina</label>
                     <select value={discipline} onChange={e => setDiscipline(e.target.value as Discipline)} className="w-full bg-blue-50/50 p-3 rounded-xl font-bold outline-none border border-blue-50">
@@ -869,6 +1506,57 @@ const App: React.FC = () => {
                )}
 
                {error && <p className="text-red-500 text-center font-bold animate-pulse">{error}</p>}
+               
+               <div className="flex flex-col items-center gap-4 py-4">
+                 {status === 'adapting' && (
+                   <div className="flex items-center gap-3 text-amber-600 font-black animate-pulse">
+                     <div className="w-5 h-5 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+                     ADAPTANDO CONTEÚDO PARA DI...
+                   </div>
+                 )}
+                 {status === 'generating-images' && (
+                   <div className="flex items-center gap-3 text-emerald-600 font-black animate-pulse">
+                     <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+                     DESENHANDO ILUSTRAÇÕES...
+                   </div>
+                 )}
+                 {status === 'designing' && (
+                   <div className="flex items-center gap-3 text-indigo-600 font-black animate-pulse">
+                     <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div>
+                     DESENHANDO SLIDES...
+                   </div>
+                 )}
+                 {status === 'generating-exercises' && (
+                   <div className="flex items-center gap-3 text-blue-600 font-black animate-pulse">
+                     <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                     CRIANDO EXERCÍCIOS...
+                   </div>
+                 )}
+                 {status === 'generating-pei' && (
+                   <div className="flex items-center gap-3 text-amber-600 font-black animate-pulse">
+                     <div className="w-5 h-5 border-2 border-amber-600 border-t-transparent rounded-full animate-spin"></div>
+                     GERANDO PLANO PEI...
+                   </div>
+                 )}
+                 {status === 'generating-mindmap' && (
+                   <div className="flex items-center gap-3 text-blue-600 font-black animate-pulse">
+                     <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                     CRIANDO MAPA MENTAL...
+                   </div>
+                 )}
+                 {status === 'generating-wordsearch' && (
+                   <div className="flex items-center gap-3 text-blue-600 font-black animate-pulse">
+                     <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                     CRIANDO CAÇA-PALAVRAS...
+                   </div>
+                 )}
+                 {status === 'planning' && (
+                   <div className="flex items-center gap-3 text-blue-600 font-black animate-pulse">
+                     <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                     GERANDO PLANO BNCC...
+                   </div>
+                 )}
+               </div>
                <button type="submit" disabled={isLoading} className="w-full bg-blue-600 text-white py-6 rounded-[2.5rem] text-2xl font-black shadow-2xl hover:scale-[1.02] transition-all disabled:opacity-50">
                 {isLoading ? 'PROCESSANDO...' : 'GERAR AGORA'}
                </button>
@@ -884,7 +1572,14 @@ const App: React.FC = () => {
                  {isEditingPei ? '✓ Salvar Edição' : '✎ Editar PEI'}
                </button>
                <button onClick={() => handleExportDocx()} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">Baixar Word (.docx)</button>
-               <button onClick={() => handleSavePDF('printable-pei', 'Plano_PEI.pdf')} className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar PDF</button>
+               <button 
+                 onClick={() => handleSavePDF('printable-pei', `Plano_PEI_${studentName.replace(/\s+/g, '_') || 'Geral'}.pdf`)} 
+                 disabled={downloadingId === 'printable-pei'}
+                 className={`bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg transition-all ${downloadingId === 'printable-pei' ? 'opacity-70 cursor-wait' : 'hover:bg-blue-700'}`}
+               >
+                 {downloadingId === 'printable-pei' ? 'Baixando...' : 'Baixar PDF'}
+               </button>
+               <button onClick={handlePrint} className="bg-slate-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">Imprimir</button>
             </div>
             
             <article id="printable-pei" className="bg-white p-8 md:p-12 shadow-2xl border border-slate-200 text-slate-800 leading-tight">
@@ -1014,7 +1709,14 @@ const App: React.FC = () => {
             <div className="flex justify-center gap-4 no-print flex-wrap">
                <button onClick={fullReset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Novo Plano</button>
                <button onClick={handleExportDocx} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">Baixar Word (.docx)</button>
-               <button onClick={() => handleSavePDF('printable-plan', 'Plano_Aula.pdf')} className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar PDF</button>
+               <button 
+                 onClick={() => handleSavePDF('printable-plan', 'Plano_Aula.pdf')} 
+                 disabled={downloadingId === 'printable-plan'}
+                 className={`bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg transition-all ${downloadingId === 'printable-plan' ? 'opacity-70 cursor-wait' : 'hover:bg-blue-700'}`}
+               >
+                 {downloadingId === 'printable-plan' ? 'Baixando...' : 'Baixar PDF'}
+               </button>
+               <button onClick={handlePrint} className="bg-slate-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">Imprimir</button>
             </div>
             
             <article id="printable-plan" className="bg-white p-8 md:p-12 shadow-2xl border border-slate-200 text-slate-800 leading-tight">
@@ -1025,6 +1727,7 @@ const App: React.FC = () => {
                     value={plan.school}
                     onChange={e => updatePlanField('school', e.target.value)}
                   />
+                  {studentName && appMode !== 'planning' && <p className="text-[10px] font-black mt-1 text-blue-200 uppercase tracking-widest">Aluno(a): {studentName}</p>}
                 </div>
                 
                 <div className="bg-slate-100 border-b-2 border-slate-800 p-4 text-center">
@@ -1155,7 +1858,15 @@ const App: React.FC = () => {
                    {status === 'generating-mindmap' ? 'Gerando...' : '🔄 Atualizar Imagem'}
                  </button>
                )}
-               <button onClick={() => handleSavePDF('printable-mindmap', 'Mapa_Mental.pdf')} className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar PDF</button>
+               <button onClick={handleExportMindMapDocx} className="bg-emerald-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar Word (.docx)</button>
+               <button 
+                 onClick={() => handleSavePDF('printable-mindmap', 'Mapa_Mental.pdf')} 
+                 disabled={downloadingId === 'printable-mindmap'}
+                 className={`bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg transition-all ${downloadingId === 'printable-mindmap' ? 'opacity-70 cursor-wait' : 'hover:bg-blue-700'}`}
+               >
+                 {downloadingId === 'printable-mindmap' ? 'Baixando...' : 'Baixar PDF'}
+               </button>
+               <button onClick={handlePrint} className="bg-slate-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">Imprimir</button>
             </div>
             
             <article id="printable-mindmap" className="bg-white p-12 shadow-2xl border border-slate-200 text-slate-800 min-h-[800px] flex flex-col items-center">
@@ -1234,7 +1945,15 @@ const App: React.FC = () => {
           <div className="space-y-10 animate-in fade-in duration-500 pb-20">
             <div className="flex justify-center gap-4 no-print flex-wrap">
                <button onClick={fullReset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Novo Caça-Palavras</button>
-               <button onClick={() => handleSavePDF('printable-wordsearch', 'Caca_Palavras.pdf')} className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar PDF</button>
+               <button onClick={handleExportWordSearchDocx} className="bg-emerald-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar Word (.docx)</button>
+               <button 
+                 onClick={() => handleSavePDF('printable-wordsearch', 'Caca_Palavras.pdf')} 
+                 disabled={downloadingId === 'printable-wordsearch'}
+                 className={`bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg transition-all ${downloadingId === 'printable-wordsearch' ? 'opacity-70 cursor-wait' : 'hover:bg-blue-700'}`}
+               >
+                 {downloadingId === 'printable-wordsearch' ? 'Baixando...' : 'Baixar PDF'}
+               </button>
+               <button onClick={handlePrint} className="bg-slate-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">Imprimir</button>
             </div>
             
             <article id="printable-wordsearch" className="bg-white p-12 shadow-2xl border border-slate-200 text-slate-800 flex flex-col items-center">
@@ -1268,9 +1987,22 @@ const App: React.FC = () => {
           <div className="space-y-10 animate-in fade-in duration-500">
             <div className="flex justify-center gap-4 no-print flex-wrap">
                <button onClick={fullReset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Novo Trabalho</button>
-               <button onClick={() => handleSavePDF('printable-exercises', 'Exercicios.pdf')} className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar Lista PDF</button>
+               <button onClick={() => handleExportExercisesDocx()} className="bg-emerald-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">Baixar Word (.docx)</button>
+               <button 
+                 onClick={() => handleSavePDF('printable-exercises', `Exercicios_${studentName.replace(/\s+/g, '_') || 'Geral'}.pdf`)} 
+                 disabled={downloadingId === 'printable-exercises'}
+                 className={`bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg transition-all ${downloadingId === 'printable-exercises' ? 'opacity-70 cursor-wait' : 'hover:bg-blue-700'}`}
+               >
+                 {downloadingId === 'printable-exercises' ? 'Baixando...' : 'Baixar PDF'}
+               </button>
+               <button onClick={handlePrint} className="bg-slate-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">Imprimir</button>
             </div>
             <article id="printable-exercises" className="bg-white p-12 rounded-[2.5rem] shadow-2xl border border-slate-100 space-y-10">
+               {studentName && (
+                 <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 mb-6">
+                   <p className="text-blue-600 font-black text-xs uppercase tracking-widest">Aluno(a): {studentName}</p>
+                 </div>
+               )}
                <div className="border-2 border-slate-100 p-6 rounded-3xl mb-10 space-y-4">
                   <div className="flex justify-between items-center border-b border-slate-100 pb-2">
                     <span className="font-bold text-slate-400 text-xs uppercase">{school || 'UNIDADE ESCOLAR'}</span>
@@ -1343,11 +2075,24 @@ const App: React.FC = () => {
 
         {lesson && (
           <div className="space-y-10 animate-in fade-in duration-500">
-            <div className="flex justify-center gap-4 no-print">
+            <div className="flex justify-center gap-4 no-print flex-wrap">
                <button onClick={fullReset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Voltar</button>
-               <button onClick={() => handleSavePDF('printable-lesson', 'Aula_Adaptada.pdf')} className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold">Baixar PDF</button>
+               <button onClick={handleExportLessonDocx} className="bg-emerald-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar Word (.docx)</button>
+               <button 
+                 onClick={() => handleSavePDF('printable-lesson', `Aula_Adaptada_${studentName.replace(/\s+/g, '_') || 'Geral'}.pdf`)} 
+                 disabled={downloadingId === 'printable-lesson'}
+                 className={`bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg transition-all ${downloadingId === 'printable-lesson' ? 'opacity-70 cursor-wait' : 'hover:bg-blue-700'}`}
+               >
+                 {downloadingId === 'printable-lesson' ? 'Baixando...' : 'Baixar PDF'}
+               </button>
+               <button onClick={handlePrint} className="bg-slate-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">Imprimir</button>
             </div>
             <article id="printable-lesson" className="bg-white p-12 rounded-[2.5rem] shadow-2xl border border-blue-50 space-y-16">
+               {studentName && (
+                 <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 mb-6 text-center">
+                   <p className="text-blue-600 font-black text-xs uppercase tracking-widest">Aluno(a): {studentName}</p>
+                 </div>
+               )}
                <div className="text-center space-y-4">
                   <h1 className="text-5xl font-black text-slate-800 tracking-tight">{lesson.adaptedTitle}</h1>
                   <p className="text-blue-500 font-black uppercase tracking-widest">{discipline} • {grade}</p>
@@ -1422,7 +2167,15 @@ const App: React.FC = () => {
             <div className="flex justify-center gap-4 no-print flex-wrap">
                <button onClick={fullReset} className="bg-white text-slate-400 px-8 py-3 rounded-2xl font-bold border border-slate-200">Voltar</button>
                <button onClick={handleExportPPTX} className="bg-orange-500 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">PowerPoint (.pptx)</button>
-               <button onClick={() => handleSavePDF('printable-slides', 'Aula_Apresentacao.pdf')} className="bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar PDF</button>
+               <button onClick={handleExportSlidesDocx} className="bg-emerald-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg">Baixar Word (.docx)</button>
+               <button 
+                 onClick={() => handleSavePDF('printable-slides', 'Aula_Apresentacao.pdf')} 
+                 disabled={downloadingId === 'printable-slides'}
+                 className={`bg-blue-600 text-white px-10 py-3 rounded-2xl font-bold shadow-lg transition-all ${downloadingId === 'printable-slides' ? 'opacity-70 cursor-wait' : 'hover:bg-blue-700'}`}
+               >
+                 {downloadingId === 'printable-slides' ? 'Baixando...' : 'Baixar PDF'}
+               </button>
+               <button onClick={handlePrint} className="bg-slate-600 text-white px-8 py-3 rounded-2xl font-bold shadow-lg">Imprimir</button>
             </div>
             <article id="printable-slides" className="space-y-12">
                <div className="bg-slate-900 p-20 rounded-[3rem] text-center min-h-[400px] flex flex-col justify-center shadow-2xl break-inside-avoid">
