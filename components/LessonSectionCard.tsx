@@ -54,6 +54,7 @@ const LessonSectionCard: React.FC<Props> = ({ section, index, isEditing, onConte
               src={section.imageUrl} 
               alt={section.title} 
               className="relative rounded-[2rem] shadow-xl w-full object-cover aspect-square bg-white border-8 border-white"
+              referrerPolicy="no-referrer"
             />
           </div>
         ) : (

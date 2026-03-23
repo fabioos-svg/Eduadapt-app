@@ -209,10 +209,13 @@ const App: React.FC = () => {
       setStatus('generating-images');
       const updatedSections = [...adapted.sections];
       
-      // Gera imagens em paralelo para maior velocidade
+      // Gera imagens em paralelo com pequeno delay para evitar rate limits
       const imagePromises = updatedSections.map(async (section, i) => {
         if (section.imagePrompt) {
           try {
+            // Pequeno delay progressivo para não sobrecarregar a API
+            await new Promise(resolve => setTimeout(resolve, i * 300));
+            
             console.log(`Gerando imagem para seção ${i+1}...`);
             const url = await generateLessonImage(section.imagePrompt);
             if (url && generationRef.current === currentGenId) {
@@ -258,6 +261,9 @@ const App: React.FC = () => {
       const updatedSlides = [...res.slides];
       const imagePromises = updatedSlides.map(async (slide, i) => {
         try {
+          // Pequeno delay progressivo
+          await new Promise(resolve => setTimeout(resolve, i * 300));
+          
           const url = await generateLessonImage(slide.imagePrompt);
           if (url && generationRef.current === currentGenId) {
             updatedSlides[i].imageUrl = url;
@@ -2206,7 +2212,12 @@ const App: React.FC = () => {
                     {/* Imagem com Estado de Carregamento */}
                     <div className="flex-1 bg-slate-50 flex items-center justify-center p-8">
                        {slide.imageUrl ? (
-                         <img src={slide.imageUrl} className="max-w-full rounded-[2.5rem] shadow-2xl border-4 border-white transition-all duration-500" alt={slide.altText} />
+                         <img 
+                           src={slide.imageUrl} 
+                           className="max-w-full rounded-[2.5rem] shadow-2xl border-4 border-white transition-all duration-500" 
+                           alt={slide.altText} 
+                           referrerPolicy="no-referrer"
+                         />
                        ) : (
                          <div className="w-full aspect-square bg-slate-100 animate-pulse rounded-[2.5rem] flex flex-col items-center justify-center border-4 border-dashed border-slate-200">
                            <div className="w-16 h-16 text-slate-300 mb-4">

@@ -155,10 +155,10 @@ export const generateMindMap = async (content: string, theme: string): Promise<M
   
   const data = JSON.parse(metaResponse.text);
 
-  // 2. Gerar a Imagem do Mapa Mental (Nano Banana)
+  // 2. Gerar a Imagem do Mapa Mental
   try {
     const imageResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-3.1-flash-image-preview',
       contents: { 
         parts: [{ 
           text: `Professional educational mind map about "${theme}". Central topic: "${data.centralTopic}". 
@@ -167,7 +167,7 @@ export const generateMindMap = async (content: string, theme: string): Promise<M
         }] 
       },
       config: { 
-        imageConfig: { aspectRatio: "1:1" } 
+        imageConfig: { aspectRatio: "1:1", imageSize: "512px" } 
       }
     });
 
@@ -175,7 +175,7 @@ export const generateMindMap = async (content: string, theme: string): Promise<M
     if (candidate?.content?.parts) {
       for (const part of candidate.content.parts) {
         if (part.inlineData?.data) {
-          data.imageUrl = `data:image/png;base64,${part.inlineData.data}`;
+          data.imageUrl = `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
           break;
         }
       }
@@ -416,10 +416,10 @@ export const generateLessonImage = async (prompt: string): Promise<string> => {
     const ai = getAI();
     // Use gemini-2.5-flash-image for more consistent educational illustrations
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
+      model: 'gemini-3.1-flash-image-preview',
       contents: { parts: [{ text: `Educational illustration for school, clear colors, white background, no text, style: vector art for education. Prompt: ${prompt}` }] },
       config: { 
-        imageConfig: { aspectRatio: "1:1" } 
+        imageConfig: { aspectRatio: "1:1", imageSize: "512px" } 
       }
     });
     
@@ -428,7 +428,7 @@ export const generateLessonImage = async (prompt: string): Promise<string> => {
       for (const part of candidate.content.parts) {
         if (part.inlineData?.data) {
           console.log("Imagem gerada com sucesso.");
-          return `data:image/png;base64,${part.inlineData.data}`;
+          return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
         }
       }
     }
